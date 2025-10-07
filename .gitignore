@@ -1,0 +1,11 @@
+# Python virtual environment
+hunter_env/
+.venv/
+
+# Secrets and credentials
+.env
+.splunkrc
+
+# Python cache
+__pycache__/
+*.pyc
