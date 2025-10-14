@@ -42,7 +42,7 @@ The agent is built on a modular and resilient architecture:
 
 As of now, the foundational setup of the project is complete.
 
-- ✅ **Environment Setup**: The development environment has been fully configured on a dedicated Dell G7 laptop running Windows 11.
+- ✅ **Environment Setup**: The development environment has been fully configured on a dedicated laptop running Windows 11.
 - ✅ **WSL 2 Integration**: Windows Subsystem for Linux (WSL 2) with an Ubuntu distribution is installed and configured to serve as the primary development environment.
 - ✅ **GPU Acceleration**: NVIDIA drivers and the CUDA Toolkit for WSL have been installed, enabling GPU-accelerated LLM inference.
 - ✅ **AI Engine Deployed**: Ollama is installed within WSL, and the `llama3:8b` model has been successfully pulled and tested.
