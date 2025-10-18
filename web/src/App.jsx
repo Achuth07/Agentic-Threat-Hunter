@@ -24,15 +24,37 @@ function App() {
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data)
+      console.log('WebSocket message received:', data)
       
-      if (data.type === 'chat_response') {
-        setMessages(prev => [...prev, { role: 'assistant', content: data.message }])
-      } else if (data.type === 'activity') {
-        setActivities(prev => [...prev, data])
-      } else if (data.type === 'search_results') {
-        setSearchResults(data)
+      if (data.type === 'activity') {
+        // Activity updates during the search process
+        const activity = {
+          type: data.status === 'running' ? 'info' : data.status === 'done' ? 'success' : 'error',
+          message: data.title,
+          details: data.detail,
+          timestamp: new Date().toISOString()
+        }
+        setActivities(prev => [...prev, activity])
+      } else if (data.type === 'final') {
+        // Final results with SPL, count, results, and summary
+        setSearchResults({
+          summary: data.summary,
+          results: data.results,
+          spl: data.spl,
+          count: data.count
+        })
+        // Add assistant message with summary
+        setMessages(prev => [...prev, { role: 'assistant', content: data.summary }])
       } else if (data.type === 'error') {
-        setMessages(prev => [...prev, { role: 'error', content: data.message }])
+        // Error from backend
+        const errorMsg = `${data.title}: ${data.detail}`
+        setMessages(prev => [...prev, { role: 'error', content: errorMsg }])
+        setActivities(prev => [...prev, {
+          type: 'error',
+          message: data.title,
+          details: data.detail,
+          timestamp: new Date().toISOString()
+        }])
       }
     }
 
@@ -55,7 +77,8 @@ function App() {
 
   const sendMessage = (message) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ message }))
+      // Backend expects plain text, not JSON
+      wsRef.current.send(message)
       setMessages(prev => [...prev, { role: 'user', content: message }])
     }
   }
