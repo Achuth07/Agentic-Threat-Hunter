@@ -89,6 +89,37 @@ def _execute_splunk_search(spl_query: str):
     return search_results
 
 
+async def _summarize_results(question: str, spl: str, rows: list[dict]) -> str:
+    """Use the local LLM to summarize results into a short human-friendly paragraph."""
+    try:
+        sample = rows[:10]
+        prompt = ChatPromptTemplate.from_messages([
+            (
+                "system",
+                "You are a security analyst. Summarize Splunk results for humans. Be concise (2-5 sentences). Mention counts and notable fields/values. Avoid code blocks.",
+            ),
+            (
+                "human",
+                """Summarize this Splunk search:
+Query: {spl}
+Total rows: {count}
+Sample (JSON): {sample}
+User question: {question}
+Write a short, human-friendly summary.""",
+            ),
+        ])
+        llm = ChatOllama(model=OLLAMA_MODEL)
+        messages = prompt.format_messages(
+            spl=spl, count=len(rows), sample=json.dumps(sample)[:4000], question=question
+        )
+        from starlette.concurrency import run_in_threadpool
+        msg = await run_in_threadpool(llm.invoke, messages)
+        text = msg.content if hasattr(msg, "content") else str(msg)
+        return text.strip()
+    except Exception as e:
+        return f"Summary unavailable: {e}"
+
+
 def _build_prompt():
     return ChatPromptTemplate.from_messages([
         (
@@ -268,12 +299,31 @@ async def ws_chat(websocket: WebSocket):
                     "status": "done",
                     "icon": "check",
                 })
-                # 4) Send final payload
+
+                # 4) Summarize
+                await websocket.send_json({
+                    "type": "activity",
+                    "title": "Summarizing results",
+                    "detail": "Generating human-readable overview",
+                    "status": "running",
+                    "icon": "robot",
+                })
+                summary = await _summarize_results(question, normalized_spl, results_list)
+                await websocket.send_json({
+                    "type": "activity",
+                    "title": "Summary ready",
+                    "detail": summary[:180] + ("…" if len(summary) > 180 else ""),
+                    "status": "done",
+                    "icon": "check",
+                })
+
+                # 5) Send final payload
                 await websocket.send_json({
                     "type": "final",
                     "spl": normalized_spl,
                     "count": count,
                     "results": results_list[:50],  # cap to keep payload small
+                    "summary": summary,
                 })
             except AuthenticationError as e:
                 await websocket.send_json({

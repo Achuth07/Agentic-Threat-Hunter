@@ -3,7 +3,7 @@ const input = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-btn');
 const resultsPre = document.getElementById('results');
 const resultsCard = document.getElementById('results-card');
-const findings = document.getElementById('findings');
+const summaryText = document.getElementById('summary-text');
 const appRoot = document.querySelector('.app');
 const toggleSidebarBtn = document.getElementById('toggle-sidebar');
 const navLinks = document.querySelectorAll('.nav-item');
@@ -44,14 +44,8 @@ function pushActivity({ icon, title, detail, status }) {
   activityList.prepend(li);
 }
 
-function addFinding(text, severity) {
-  const row = document.createElement('div');
-  row.className = 'finding';
-  row.innerHTML = `
-    <div>${text}</div>
-    <span class="severity ${severity}">${severity.toUpperCase()}</span>
-  `;
-  findings.prepend(row);
+function setSummary(text) {
+  if (summaryText) summaryText.textContent = text;
 }
 
 function handleMessage(ev) {
@@ -62,13 +56,29 @@ function handleMessage(ev) {
     pushActivity({ icon: iconFor(msg.icon), title: msg.title, detail: msg.detail, status: msg.status });
   } else if (msg.type === 'error') {
     pushActivity({ icon: '⛔', title: msg.title, detail: msg.detail, status: 'error' });
-    addFinding(`${msg.title}: ${msg.detail}`, 'medium');
+    setSummary(`${msg.title}: ${msg.detail}`);
   } else if (msg.type === 'final') {
     const pretty = JSON.stringify({ spl: msg.spl, count: msg.count, results: msg.results }, null, 2);
     resultsPre.textContent = pretty;
     resultsCard.style.display = 'block';
-    const sev = msg.count > 0 ? 'high' : 'resolved';
-    addFinding(msg.count > 0 ? 'Potential findings detected in latest search' : 'No findings in latest search', sev);
+    // Prefer server-provided summary; fallback to a simple local summary
+    if (msg.summary && msg.summary.trim()) {
+      setSummary(msg.summary.trim());
+    } else {
+      const topKeys = (row) => Object.keys(row || {}).filter(k => !k.startsWith('_')).slice(0, 4);
+      let summary = `SPL executed: ${msg.spl}\nRows: ${msg.count}`;
+      if (Array.isArray(msg.results) && msg.results.length > 0) {
+        const sample = msg.results[0];
+        const keys = topKeys(sample);
+        if (keys.length) {
+          const kv = keys.map(k => `${k}=${sample[k]}`).join(', ');
+          summary += `\nSample: ${kv}`;
+        }
+      } else {
+        summary += `\nNo rows were returned.`;
+      }
+      setSummary(summary);
+    }
     // sample stat tweaks
     const analyzed = document.getElementById('stat-analyzed');
     analyzed.textContent = Number(analyzed.textContent) + (msg.count || 0);

@@ -84,13 +84,16 @@
           </div>
         </section>
 
-        <section class="card glass">
-          <h3>Recent Findings</h3>
-          <div id="findings" class="findings"></div>
+        <section class="card glass" id="summary-card">
+          <div class="summary-header">
+            <div class="avatar ai">🤖</div>
+            <h3>Search Result Summary</h3>
+          </div>
+          <div id="summary-text" class="summary-text">No summary yet. Run a query to see a human-friendly overview.</div>
         </section>
 
         <section class="card glass" id="results-card" style="display:none;">
-          <h3>Latest Search Results</h3>
+          <h3>Raw Search Results</h3>
           <pre id="results"></pre>
         </section>
       </main>

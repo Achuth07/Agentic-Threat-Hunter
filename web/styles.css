@@ -83,12 +83,8 @@ body {
 .stat .value.warn { color: var(--warn); }
 .stat .value.danger { color: var(--danger); }
 
-.findings { display: grid; gap: 10px; }
-.finding { display:flex; justify-content: space-between; align-items: center; background: color-mix(in srgb, var(--panel-2) 70%, transparent); border:1px solid var(--border); border-radius: 12px; padding: 12px; }
-.finding .severity { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); }
-.severity.high { color: var(--danger); background:#2b1313; border-color:#532121; }
-.severity.medium { color: var(--warn); background:#2b220f; border-color:#4a3615; }
-.severity.resolved { color: var(--good); background:#0f2518; border-color:#224d33; }
+.summary-header { display:flex; align-items:center; gap:10px; margin-bottom: 8px; }
+.summary-text { color: var(--text); opacity:.9; line-height:1.5; white-space: pre-wrap; }
 
 #results { max-height: 360px; overflow: auto; background: #0b120c; border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
 
