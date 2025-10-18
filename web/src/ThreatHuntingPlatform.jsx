@@ -65,10 +65,15 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
         transition-all duration-300 flex flex-col
       `}>
         <div className="p-4 lg:p-6 border-b border-neutral-800 flex items-center gap-3">
-          <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center flex-shrink-0">
-            <Shield className="w-5 h-5 text-black" />
+          <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
+            <img src="/favicons/android-chrome-512x512.png" alt="WhatCyber logo" className="w-8 h-8 object-cover" />
           </div>
-          {sidebarExpanded && <span className="font-semibold text-sm lg:text-base">Threat Hunter AI</span>}
+          {sidebarExpanded && (
+            <div className="flex flex-col leading-tight">
+              <span className="font-bold text-sm lg:text-base">WhatCyber</span>
+              <span className="text-xs text-neutral-400">Agentic AI</span>
+            </div>
+          )}
           <button 
             className="ml-auto lg:hidden"
             onClick={() => setMobileMenuOpen(false)}
