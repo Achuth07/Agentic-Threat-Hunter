@@ -8,6 +8,7 @@ Agentic-Threat-Hunter is an autonomous AI agent designed for proactive cybersecu
 - **Reasoning Engine**: A locally-hosted LLM (e.g., `llama3:8b`) served via Ollama ensures privacy and eliminates API costs.
 - **Hunting Ground**: Splunk Enterprise (Free License) serves as the initial SIEM platform, with programmatic interaction via the Splunk Python SDK.
 - **Custom Tools**: Tools are modular and include Splunk search execution. Future tools will expand capabilities to threat intelligence gathering and EDR interaction.
+- **Web Interface**: A modern React-based UI built with Tailwind CSS and lucide-react provides real-time chat, activity monitoring, and result visualization via WebSocket communication.
 
 ## Developer Workflows
 ### Setting Up the Environment
@@ -34,6 +35,16 @@ Agentic-Threat-Hunter is an autonomous AI agent designed for proactive cybersecu
   ```bash
   python main.py
   ```
+- Run the web interface:
+  ```bash
+  # Development mode (with hot reload)
+  python server.py  # Terminal 1 - Backend
+  cd web && npm run dev  # Terminal 2 - Frontend
+  
+  # Production mode
+  cd web && npm run build && cd ..
+  python server.py  # Serves built React app
+  ```
 
 ### Testing and Debugging
 - Use the `main.py` script to verify the integration of LangGraph, Ollama, and Splunk.
@@ -46,9 +57,14 @@ Agentic-Threat-Hunter is an autonomous AI agent designed for proactive cybersecu
 
 ## Key Files and Directories
 - `main.py`: Entry point for the agent. Contains the workflow and integration logic.
+- `server.py`: FastAPI backend that serves the React UI and handles WebSocket connections for real-time chat and activity streaming.
+- `web/`: React frontend directory.
+  - `web/src/ThreatHuntingPlatform.jsx`: Main UI component with chat, dashboard, integrations, and settings views.
+  - `web/src/App.jsx`: React app root that manages WebSocket connections and state.
+  - `web/dist/`: Production build directory (served by FastAPI).
 - `requirements.txt`: Lists Python dependencies.
 - `hunter_env/`: Virtual environment directory.
-- `.env`: Stores sensitive environment variables like `SPLUNK_PASSWORD`.
+- `.env`: Stores sensitive environment variables like `SPLUNK_PASSWORD`, `DEFAULT_INDEX`, `TIME_POLICY_MODE`, `OLLAMA_MODEL`.
 - `~/.splunkrc`: Configuration file for Splunk SDK.
 
 ## External Dependencies

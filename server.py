@@ -29,9 +29,10 @@ TIME_POLICY_MODE = os.getenv("TIME_POLICY_MODE", "normalize").lower()
 
 app = FastAPI(title="Agentic-Threat-Hunter UI")
 
-# Serve static frontend
-STATIC_DIR = os.path.join(os.path.dirname(__file__), "web")
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+# Serve React build
+BUILD_DIR = os.path.join(os.path.dirname(__file__), "web", "dist")
+if os.path.exists(BUILD_DIR):
+    app.mount("/assets", StaticFiles(directory=os.path.join(BUILD_DIR, "assets")), name="assets")
 
 
 
@@ -63,8 +64,8 @@ def _apply_index_policy(question: str, spl: str):
 
 @app.get("/")
 def index():
-    # Serve the SPA
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+    # Serve the React SPA
+    return FileResponse(os.path.join(BUILD_DIR, "index.html"))
 
 
 def _connect_splunk():
@@ -350,6 +351,17 @@ async def ws_chat(websocket: WebSocket):
 
     except WebSocketDisconnect:
         return
+
+
+# Catch-all route for React Router (must be last)
+@app.get("/{full_path:path}")
+def catch_all(full_path: str):
+    # If the requested path doesn't exist as a static file, serve index.html
+    # This allows React Router to handle the routing
+    file_path = os.path.join(BUILD_DIR, full_path)
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    return FileResponse(os.path.join(BUILD_DIR, "index.html"))
 
 
 if __name__ == "__main__":

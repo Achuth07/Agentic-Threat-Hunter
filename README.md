@@ -65,6 +65,7 @@ Follow these steps to set up the project on your own machine.
   - [Splunk Enterprise](https://www.splunk.com/en_us/download/splunk-enterprise.html) installed and running.
   - Ollama installed, with a model pulled (e.g., `ollama pull llama3:8b`).
   - Python 3.9+.
+  - Node.js 18+ and npm (for the React frontend).
   - Git.
 
 ### Installation
@@ -115,20 +116,55 @@ Currently, the project contains test scripts for the core components. You can ru
 python main.py
 ```
 
-### Run the Web UI (new)
+### Run the Web UI
 
-Start the FastAPI server and open the dashboard at http://localhost:8000.
+The project includes a modern React-based web interface built with **React**, **Tailwind CSS**, and **lucide-react**. The UI provides:
+
+- **AI Threat Hunting Chat**: Interactive chat interface to query the AI agent
+- **Real-time Activity Feed**: See step-by-step agent operations as they happen
+- **Search Result Summary**: LLM-generated summaries of findings
+- **Raw Search Results**: View raw JSON responses from security platforms
+- **Dashboard View**: Security metrics and threat detection timeline
+- **Integrations View**: Manage connected security platforms
+
+#### Development Mode
+
+For frontend development with hot reload:
 
 ```bash
-pip install -r requirements.txt
+# Terminal 1: Start the backend
+python server.py
+
+# Terminal 2: Start the React dev server
+cd web
+npm install  # First time only
+npm run dev
+```
+
+The frontend will be available at http://localhost:3000 and will proxy API/WebSocket requests to the backend on port 8002.
+
+#### Production Mode
+
+Build and serve the React app from the FastAPI backend:
+
+```bash
+# Build the React app
+cd web
+npm run build
+cd ..
+
+# Start the server (serves the built React app)
 python server.py
 ```
 
-In the UI you can:
+Open http://localhost:8002 to access the full application.
 
-- Chat with the LLM at the top bar; messages are sent via WebSocket to the backend.
-- Watch step-by-step agent activity as it generates SPL and executes the Splunk query.
-- See summarized search results and recent findings.
+**Features:**
+
+- Chat with the LLM at the top; messages are sent via WebSocket to the backend.
+- Watch step-by-step agent activity as it generates SPL and executes Splunk queries.
+- See LLM-generated summaries of search results and raw JSON data.
+- Multiple views: Chat, Dashboard, Integrations, and Settings.
 
 ### Configuration (Index and Time Policies)
 
