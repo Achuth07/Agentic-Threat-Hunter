@@ -130,6 +130,38 @@ In the UI you can:
 - Watch step-by-step agent activity as it generates SPL and executes the Splunk query.
 - See summarized search results and recent findings.
 
+### Configuration (Index and Time Policies)
+
+The LLM generates SPL, and the server optionally applies small, deterministic guardrails to avoid common Splunk REST errors. These are configurable via environment variables.
+
+- `DEFAULT_INDEX` (default: `main`)
+  - Used when the query starts with `search` and no `index=` is present.
+  - If the SPL contains `index=_internal` but the user did not ask for internal logs, the server rewrites it to `index=DEFAULT_INDEX`.
+
+- `TIME_POLICY_MODE` (default: `normalize`)
+  - Controls how time windows are handled.
+  - `off`: Do nothing. The LLM’s SPL is used as-is (no fixes, no inference).
+  - `normalize`: Convert invalid tokens to valid SPL (e.g., `timeframe:end-1d` → `earliest=-1d`). Do not infer windows.
+  - `infer`: If the user asks for a range (e.g., “last 24 hours”) and the SPL lacks `earliest=`, insert an appropriate `earliest`.
+
+Examples:
+
+```bash
+# Default behavior (normalize time tokens only)
+python server.py
+
+# Pure LLM output, no policy changes
+TIME_POLICY_MODE=off python server.py
+
+# Infer missing time windows from the question
+TIME_POLICY_MODE=infer python server.py
+
+# Change default index if desired
+DEFAULT_INDEX=my_index python server.py
+```
+
+In the activity feed you’ll see entries when a policy is applied (e.g., “Index policy applied”, “Time window applied (mode=normalize/infer)”).
+
 ## Roadmap
 
 This project is in active development. The next steps are:

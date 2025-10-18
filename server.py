@@ -11,7 +11,6 @@ import splunklib.client as client
 import splunklib.results as results
 from splunklib.binding import HTTPError, AuthenticationError
 
-
 # Load env
 load_dotenv()
 
@@ -23,6 +22,10 @@ SPLUNK_PASSWORD = os.getenv("SPLUNK_PASSWORD")
 
 # Ollama model
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3:8b")
+# Default index policy
+DEFAULT_INDEX = os.getenv("DEFAULT_INDEX", "main")
+# Time policy mode: off | normalize | infer
+TIME_POLICY_MODE = os.getenv("TIME_POLICY_MODE", "normalize").lower()
 
 app = FastAPI(title="Agentic-Threat-Hunter UI")
 
@@ -30,6 +33,33 @@ app = FastAPI(title="Agentic-Threat-Hunter UI")
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "web")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+
+
+def _apply_index_policy(question: str, spl: str):
+    """Enforce default index policy and return (new_spl, reason_or_None)."""
+    q_lower = (question or "").lower()
+    wants_internal = ("internal" in q_lower) or ("_internal" in q_lower)
+
+    s = spl.strip()
+    s_lower = s.lower()
+
+    import re
+    index_pattern = re.compile(r"\bindex\s*=\s*([\w:\-]+)")
+    indexes = index_pattern.findall(s_lower)
+
+    # If explicit _internal but question didn't ask for it, rewrite
+    if any(ix == "_internal" for ix in indexes) and not wants_internal:
+        new = index_pattern.sub(lambda m: f"index={DEFAULT_INDEX}" if m.group(1).lower() == "_internal" else m.group(0), s)
+        return new, f"Rewrote index=_internal to index={DEFAULT_INDEX}"
+
+    # If no index provided and generating command is 'search', inject default index
+    starts_with_search = s_lower.startswith("search ") or s_lower.startswith("| search ")
+    if not indexes and starts_with_search:
+        new = re.sub(r"^(\|\s*)?search\s+", lambda m: f"{m.group(0)}index={DEFAULT_INDEX} ", s, count=1, flags=re.IGNORECASE)
+        if new != s:
+            return new, f"Inserted index={DEFAULT_INDEX} as default"
+
+    return s, None
 
 @app.get("/")
 def index():
@@ -66,14 +96,64 @@ def _build_prompt():
                         """You are a Splunk search assistant.
 Your job is to output only a valid Splunk SPL query — no explanations, code blocks, or backticks.
 Rules:
-- Prefer starting queries with the generating command 'search '.
-- It's okay to use other generating commands ('from', 'tstats', 'mstats') when needed.
+    Time windows:
+    - Use Splunk relative time with earliest=/latest=. Examples: earliest=-5m, earliest=-24h, earliest=-7d latest=now.
+    - Do not output non-SPL tokens like timeframe: or end-1d; always convert to earliest=/latest= forms.
+Index policy:
+- Default to index=main when the user does not specify an index.
+- Use index=_internal only if the user explicitly mentions internal logs or _internal.
 Examples:
     User: Find login failures
-    You: search index=auth sourcetype=secure action=failure | stats count""",
+        You: search index=auth sourcetype=secure action=failure earliest=-24h | stats count""",
         ),
         ("human", "{question}"),
     ])
+
+
+def _apply_time_window_policy(question: str, spl: str):
+    """Normalize/insert earliest/latest based on natural language like 'last 24 hours'.
+    Returns (new_spl, reason_or_None). Conservative heuristic.
+    """
+    mode = TIME_POLICY_MODE  # off | normalize | infer
+    if mode not in {"off", "normalize", "infer"}:
+        mode = "normalize"
+
+    s = spl.strip()
+    low = s.lower()
+
+    import re
+    # Quick convert of common bad tokens like 'timeframe:end-1d' => 'earliest=-1d'
+    converted = re.sub(r"timeframe\s*:\s*end-([0-9]+)([dhm])", r"earliest=-\1\2", low)
+    if converted != low:
+        s = re.sub(r"timeframe\s*:\s*end-([0-9]+)([dhm])", r"earliest=-\1\2", s, flags=re.IGNORECASE)
+        return s, "Converted non-SPL timeframe to earliest= syntax"
+
+    # If earliest/latest already present, leave it
+    if " earliest=" in low or " latest=" in low:
+        return s, None
+
+    # Respect mode
+    if mode == "off":
+        return s, None
+
+    if mode == "normalize":
+        # Only convert invalid tokens; do not infer a window
+        return s, None
+
+    # mode == infer
+    q = (question or "").lower()
+    reason = None
+    if "last 24 hours" in q or "past 24 hours" in q or "last day" in q or "past day" in q:
+        s += " earliest=-24h"
+        reason = "Inserted earliest=-24h for 'last 24 hours'"
+    elif "last 5 minutes" in q or "past 5 minutes" in q or "last five minutes" in q:
+        s += " earliest=-5m"
+        reason = "Inserted earliest=-5m for 'last 5 minutes'"
+    elif "last hour" in q or "past hour" in q:
+        s += " earliest=-1h"
+        reason = "Inserted earliest=-1h for 'last hour'"
+
+    return (s, reason) if reason else (s, None)
 
 
 @app.websocket("/ws")
@@ -145,6 +225,30 @@ async def ws_chat(websocket: WebSocket):
                     "status": "done",
                     "icon": "code",
                 })
+
+            # Apply index policy after normalization
+            enforced_spl, policy_reason = _apply_index_policy(question, normalized_spl)
+            if policy_reason:
+                await websocket.send_json({
+                    "type": "activity",
+                    "title": "Index policy applied",
+                    "detail": policy_reason,
+                    "status": "done",
+                    "icon": "robot",
+                })
+                normalized_spl = enforced_spl
+
+            # Apply time-window policy
+            time_spl, time_reason = _apply_time_window_policy(question, normalized_spl)
+            if time_reason:
+                await websocket.send_json({
+                    "type": "activity",
+                    "title": "Time window applied",
+                    "detail": f"{time_reason} (mode={TIME_POLICY_MODE})",
+                    "status": "done",
+                    "icon": "clock",
+                })
+                normalized_spl = time_spl
 
             # 3) Execute Splunk search
             await websocket.send_json({
