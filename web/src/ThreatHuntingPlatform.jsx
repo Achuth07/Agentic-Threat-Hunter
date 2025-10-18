@@ -148,13 +148,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
               <>
               {/* Mobile icon-only */}
               <button
-                onClick={() => {
-                  if (typeof onNewHunt === 'function') {
-                    onNewHunt();
-                  } else if (typeof onSendMessage === 'function') {
-                    onSendMessage('__NEW_HUNT__');
-                  }
-                }}
+                onClick={onNewHunt}
                 className="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white text-black hover:bg-neutral-200 transition-colors"
                 aria-label="Start a new threat hunt"
                 title="Start a new threat hunt"
@@ -163,13 +157,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
               </button>
               {/* Desktop labeled */}
               <button
-                onClick={() => {
-                  if (typeof onNewHunt === 'function') {
-                    onNewHunt();
-                  } else if (typeof onSendMessage === 'function') {
-                    onSendMessage('__NEW_HUNT__');
-                  }
-                }}
+                onClick={onNewHunt}
                 className="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white text-black font-medium hover:bg-neutral-200 transition-colors"
                 title="Start a new threat hunt"
               >
@@ -233,6 +221,66 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                     </div>
                   </div>
                 ))
+              )}
+
+              {/* Live Agent Activity Monitor */}
+              {activities.length > 0 && (
+                <div className="flex gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-neutral-900 flex items-center justify-center flex-shrink-0">
+                    <Shield className="w-5 h-5 text-lime-500" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="bg-neutral-950 rounded-2xl p-5 border border-neutral-800">
+                      <p className="text-sm text-neutral-200 leading-relaxed mb-4">
+                        I'm initiating a comprehensive threat hunt across all platforms. Check the agent activity monitor below for real-time progress.
+                      </p>
+                      <div className="bg-black rounded-xl p-4 border border-neutral-800 space-y-3">
+                          {activities.slice(-5).map((activity) => (
+                            <div key={activity.id || activity.message} className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              {activity.type === 'info' ? (
+                                <div className="animate-spin">
+                                  <Clock className="w-4 h-4 text-blue-500" />
+                                </div>
+                              ) : activity.type === 'success' ? (
+                                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                              ) : (
+                                <AlertCircle className="w-4 h-4 text-red-500" />
+                              )}
+                              <span className="text-xs text-neutral-300 font-medium">{activity.message}</span>
+                            </div>
+                            <span className={`text-xs font-medium ${
+                              activity.type === 'info' ? 'text-blue-500' : 
+                              activity.type === 'success' ? 'text-green-500' : 
+                              'text-red-500'
+                            }`}>
+                              {activity.type === 'info' ? 'In Progress' : 
+                               activity.type === 'success' ? 'Complete' : 
+                               'Error'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Agent summary message below activity monitor */}
+              {searchResults && searchResults.summary && (
+                <div className="flex gap-4 mt-6">
+                  <div className="w-10 h-10 rounded-xl bg-neutral-900 flex items-center justify-center flex-shrink-0">
+                    <Shield className="w-5 h-5 text-lime-500" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="bg-neutral-950 rounded-2xl p-5 border border-neutral-800">
+                      <p className="text-sm text-neutral-200 leading-relaxed">
+                        <span className="font-semibold text-lime-500">Here is a concise and human-friendly summary:</span><br />
+                        {searchResults.summary}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               )}
               <div ref={messagesEndRef} />
             </div>

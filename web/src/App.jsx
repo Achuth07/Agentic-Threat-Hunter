@@ -27,14 +27,84 @@ function App() {
       console.log('WebSocket message received:', data)
       
       if (data.type === 'activity') {
-        // Activity updates during the search process
-        const activity = {
-          type: data.status === 'running' ? 'info' : data.status === 'done' ? 'success' : 'error',
-          message: data.title,
-          details: data.detail,
-          timestamp: new Date().toISOString()
-        }
-        setActivities(prev => [...prev, activity])
+        // Correlate completion events to their corresponding running activity
+        // so the spinner changes to a checkmark on the same line.
+        const correlates = new Map([
+          ['SPL generated', 'Generating SPL query'],
+          ['Search completed', 'Executing Splunk search'],
+          ['Summary ready', 'Summarizing results'],
+        ])
+
+        setActivities(prev => {
+          const updated = [...prev]
+
+          const status = data.status
+          const title = data.title
+          const detail = data.detail
+
+          // If this is a completion that maps to a running step, update the running step only
+          if (status === 'done' && correlates.has(title)) {
+            const targetId = correlates.get(title)
+            const targetIdx = updated.findIndex(a => a.id === targetId)
+            if (targetIdx >= 0) {
+              updated[targetIdx] = {
+                ...updated[targetIdx],
+                type: 'success',
+                status: 'done',
+                details: updated[targetIdx].details || detail,
+                timestamp: new Date().toISOString(),
+              }
+            } else {
+              // If we didn't track the running step yet, fall back to adding this as its own entry
+              updated.push({
+                id: title,
+                type: 'success',
+                message: title,
+                details: detail,
+                status: 'done',
+                timestamp: new Date().toISOString(),
+              })
+            }
+            // Mark 'Analyzing question' as complete if present
+            const analyzingIdx = updated.findIndex(a => a.id === 'Analyzing question')
+            if (analyzingIdx >= 0 && updated[analyzingIdx].type === 'info') {
+              updated[analyzingIdx] = {
+                ...updated[analyzingIdx],
+                type: 'success',
+                status: 'done',
+                timestamp: new Date().toISOString(),
+              }
+            }
+            return updated
+          }
+
+          // If this is a new activity after 'Analyzing question', mark 'Analyzing question' as complete
+          if (title !== 'Analyzing question') {
+            const analyzingIdx = updated.findIndex(a => a.id === 'Analyzing question')
+            if (analyzingIdx >= 0 && updated[analyzingIdx].type === 'info') {
+              updated[analyzingIdx] = {
+                ...updated[analyzingIdx],
+                type: 'success',
+                status: 'done',
+                timestamp: new Date().toISOString(),
+              }
+            }
+          }
+
+          // Otherwise, insert/update this activity by its own title
+          const id = title
+          const existingIndex = updated.findIndex(a => a.id === id)
+          const type = status === 'running' ? 'info' : status === 'done' ? 'success' : 'error'
+          const entry = { id, type, message: title, details: detail, status, timestamp: new Date().toISOString() }
+
+          if (existingIndex >= 0) {
+            updated[existingIndex] = entry
+          } else {
+            updated.push(entry)
+          }
+
+          return updated
+        })
       } else if (data.type === 'final') {
         // Final results with SPL, count, results, and summary
         setSearchResults({
@@ -83,6 +153,13 @@ function App() {
     }
   }
 
+  const handleNewHunt = () => {
+    // Clear all UI state for a fresh hunt
+    setMessages([])
+    setActivities([])
+    setSearchResults(null)
+  }
+
   return (
     <ThreatHuntingPlatform 
       messages={messages}
@@ -90,6 +167,7 @@ function App() {
       searchResults={searchResults}
       isConnected={isConnected}
       onSendMessage={sendMessage}
+      onNewHunt={handleNewHunt}
     />
   )
 }
