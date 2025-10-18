@@ -7,14 +7,20 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
   const [activeView, setActiveView] = useState('chat');
   const [inputMessage, setInputMessage] = useState('');
   const messagesEndRef = useRef(null);
+  const didInitialScrollRef = useRef(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
+    // Avoid scrolling to bottom on initial load; scroll only after first render
+    if (!didInitialScrollRef.current) {
+      didInitialScrollRef.current = true;
+      return;
+    }
     scrollToBottom();
-  }, [messages]);
+  }, [messages, activities, searchResults]);
 
   const handleSendMessage = (e) => {
     e.preventDefault();
@@ -181,7 +187,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
         {activeView === 'chat' && (
           <div className="flex-1 overflow-y-auto">
             {/* Chat Messages Area */}
-            <div className="px-4 lg:px-8 py-4 lg:py-6 space-y-4 lg:space-y-6 border-b border-neutral-800">
+            <div className="px-4 lg:px-8 py-4 lg:py-6 space-y-4 lg:space-y-6 border-b border-neutral-800 min-h-[35vh] lg:min-h-[40vh]">
               {messages.length === 0 ? (
                 <div className="flex gap-4">
                   <div className="w-10 h-10 rounded-xl bg-neutral-900 flex items-center justify-center flex-shrink-0">
