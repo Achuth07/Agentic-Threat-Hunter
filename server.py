@@ -34,6 +34,11 @@ BUILD_DIR = os.path.join(os.path.dirname(__file__), "web", "dist")
 if os.path.exists(BUILD_DIR):
     app.mount("/assets", StaticFiles(directory=os.path.join(BUILD_DIR, "assets")), name="assets")
 
+# Serve favicons from project root's favicon_io directory at /favicons
+FAVICON_DIR = os.path.join(os.path.dirname(__file__), "favicon_io")
+if os.path.isdir(FAVICON_DIR):
+    app.mount("/favicons", StaticFiles(directory=FAVICON_DIR), name="favicons")
+
 
 
 def _apply_index_policy(question: str, spl: str):
