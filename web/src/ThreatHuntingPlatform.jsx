@@ -3,6 +3,7 @@ import { MessageSquare, LayoutDashboard, Plug, Settings, Menu, Shield, TrendingU
 
 export default function ThreatHuntingPlatform() {
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeView, setActiveView] = useState('chat');
   const [timeRange, setTimeRange] = useState('7d');
   
@@ -171,14 +172,34 @@ export default function ThreatHuntingPlatform() {
   ];
 
   return (
-    <div className="flex h-screen bg-black text-white">
+    <div className="flex h-screen bg-black text-white overflow-hidden">
+      {/* Mobile Menu Overlay */}
+      {mobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <div className={`${sidebarExpanded ? 'w-64' : 'w-20'} bg-neutral-950 border-r border-neutral-800 transition-all duration-300 flex flex-col`}>
-        <div className="p-6 border-b border-neutral-800 flex items-center gap-3">
+      <div className={`
+        ${sidebarExpanded ? 'w-64' : 'w-20'} 
+        ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        fixed lg:relative z-50 h-screen
+        bg-neutral-950 border-r border-neutral-800 
+        transition-all duration-300 flex flex-col
+      `}>
+        <div className="p-4 lg:p-6 border-b border-neutral-800 flex items-center gap-3">
           <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center flex-shrink-0">
             <Shield className="w-5 h-5 text-black" />
           </div>
-          {sidebarExpanded && <span className="font-semibold">ThreatGuard AI</span>}
+          {sidebarExpanded && <span className="font-semibold text-sm lg:text-base">ThreatGuard AI</span>}
+          <button 
+            className="ml-auto lg:hidden"
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            <Menu className="w-5 h-5" />
+          </button>
         </div>
 
         <div className="px-4 pt-6 pb-2">
@@ -229,27 +250,36 @@ export default function ThreatHuntingPlatform() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden w-full">
         {/* Header */}
-        <div className="bg-black border-b border-neutral-800 px-8 py-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold mb-1">
-              {activeView === 'dashboard' && 'Security Dashboard'}
-              {activeView === 'chat' && 'AI Threat Hunting'}
-              {activeView === 'integrations' && 'Integrations'}
-              {activeView === 'settings' && 'Settings'}
-            </h1>
-            <p className="text-sm text-neutral-400">
-              {activeView === 'chat' && 'Real-time autonomous threat hunting across your security platforms'}
-              {activeView === 'dashboard' && 'Monitor and analyze security posture in real-time'}
-              {activeView === 'integrations' && 'Connected security platforms and data sources'}
-              {activeView === 'settings' && 'Configure threat hunting preferences and automation'}
-            </p>
+        <div className="bg-black border-b border-neutral-800 px-4 lg:px-8 py-4 lg:py-6 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <button 
+              className="lg:hidden flex-shrink-0"
+              onClick={() => setMobileMenuOpen(true)}
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-lg lg:text-2xl font-semibold mb-0.5 lg:mb-1 truncate">
+                {activeView === 'dashboard' && 'Security Dashboard'}
+                {activeView === 'chat' && 'AI Threat Hunting'}
+                {activeView === 'integrations' && 'Integrations'}
+                {activeView === 'settings' && 'Settings'}
+              </h1>
+              <p className="text-xs lg:text-sm text-neutral-400 hidden sm:block truncate">
+                {activeView === 'chat' && 'Real-time autonomous threat hunting across your security platforms'}
+                {activeView === 'dashboard' && 'Monitor and analyze security posture in real-time'}
+                {activeView === 'integrations' && 'Connected security platforms and data sources'}
+                {activeView === 'settings' && 'Configure threat hunting preferences and automation'}
+              </p>
+            </div>
           </div>
           {activeView !== 'settings' && (
-            <button className="bg-lime-500 hover:bg-lime-400 text-black px-5 py-2.5 rounded-lg font-medium flex items-center gap-2 transition-colors">
+            <button className="bg-lime-500 hover:bg-lime-400 text-black px-3 lg:px-5 py-2 lg:py-2.5 rounded-lg font-medium flex items-center gap-2 transition-colors text-sm lg:text-base flex-shrink-0">
               <Plus className="w-4 h-4" />
-              New Threat Hunt
+              <span className="hidden sm:inline">New Threat Hunt</span>
+              <span className="sm:hidden">New</span>
             </button>
           )}
         </div>
@@ -258,7 +288,7 @@ export default function ThreatHuntingPlatform() {
         {activeView === 'chat' && (
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Chat Messages Area */}
-            <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
+            <div className="flex-1 overflow-y-auto px-4 lg:px-8 py-4 lg:py-6 space-y-4 lg:space-y-6">
               <div className="flex gap-4">
                 <div className="w-10 h-10 rounded-xl bg-neutral-900 flex items-center justify-center flex-shrink-0">
                   <Shield className="w-5 h-5 text-lime-500" />
@@ -270,10 +300,10 @@ export default function ThreatHuntingPlatform() {
                 </div>
               </div>
 
-              <div className="flex gap-4 justify-end">
-                <div className="max-w-2xl">
-                  <div className="bg-neutral-900 rounded-2xl p-5 border border-neutral-800">
-                    <p className="text-sm text-neutral-200">Investigate any suspicious authentication activities in the last 24 hours</p>
+              <div className="flex gap-3 lg:gap-4 justify-end">
+                <div className="max-w-full lg:max-w-2xl">
+                  <div className="bg-neutral-900 rounded-2xl p-4 lg:p-5 border border-neutral-800">
+                    <p className="text-xs lg:text-sm text-neutral-200">Investigate any suspicious authentication activities in the last 24 hours</p>
                   </div>
                 </div>
               </div>
@@ -314,23 +344,23 @@ export default function ThreatHuntingPlatform() {
             </div>
 
             {/* Chat Input */}
-            <div className="border-t border-neutral-800 px-8 py-6 bg-black">
-              <div className="flex gap-3">
+            <div className="border-t border-neutral-800 px-4 lg:px-8 py-4 lg:py-6 bg-black">
+              <div className="flex gap-2 lg:gap-3">
                 <input
                   type="text"
                   placeholder="Ask the AI agent to investigate threats..."
-                  className="flex-1 bg-neutral-950 border border-neutral-800 rounded-xl px-5 py-3 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-lime-500 transition-colors"
+                  className="flex-1 bg-neutral-950 border border-neutral-800 rounded-xl px-4 lg:px-5 py-2.5 lg:py-3 text-xs lg:text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-lime-500 transition-colors"
                 />
-                <button className="bg-lime-500 hover:bg-lime-400 text-black px-6 py-3 rounded-xl flex items-center gap-2 font-medium transition-colors">
-                  <span className="text-sm">Send</span>
+                <button className="bg-lime-500 hover:bg-lime-400 text-black px-4 lg:px-6 py-2.5 lg:py-3 rounded-xl flex items-center gap-2 font-medium transition-colors flex-shrink-0">
+                  <span className="text-xs lg:text-sm">Send</span>
                 </button>
               </div>
             </div>
 
             {/* Search Result Summary */}
-            <div className="border-t border-neutral-800 bg-neutral-950 px-8 py-6">
-              <div className="mb-4">
-                <h3 className="text-base font-semibold mb-1">Search Result Summary</h3>
+            <div className="border-t border-neutral-800 bg-neutral-950 px-4 lg:px-8 py-4 lg:py-6">
+              <div className="mb-3 lg:mb-4">
+                <h3 className="text-sm lg:text-base font-semibold mb-1">Search Result Summary</h3>
                 <p className="text-xs text-neutral-500">Analysis results from {searchSummary.timeRange.toLowerCase()}</p>
               </div>
               
@@ -347,9 +377,9 @@ export default function ThreatHuntingPlatform() {
             </div>
 
             {/* Raw Search Results */}
-            <div className="border-t border-neutral-800 bg-black px-8 py-6 flex-1 overflow-y-auto">
-              <div className="mb-5">
-                <h3 className="text-base font-semibold mb-1">Raw Search Results</h3>
+            <div className="border-t border-neutral-800 bg-black px-4 lg:px-8 py-4 lg:py-6 flex-1 overflow-y-auto">
+              <div className="mb-4 lg:mb-5">
+                <h3 className="text-sm lg:text-base font-semibold mb-1">Raw Search Results</h3>
                 <p className="text-xs text-neutral-500">Raw JSON responses from security platforms</p>
               </div>
               
@@ -381,45 +411,45 @@ export default function ThreatHuntingPlatform() {
 
         {/* Dashboard View */}
         {activeView === 'dashboard' && (
-          <div className="flex-1 overflow-y-auto px-8 py-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="flex-1 overflow-y-auto px-4 lg:px-8 py-4 lg:py-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-6 lg:mb-8">
               {[
                 { label: 'Active Threats', value: '3', trend: '+2', trendUp: false, color: 'text-orange-500', bg: 'bg-orange-500/10' },
                 { label: 'Investigated', value: '127', trend: '+12.5%', trendUp: true, color: 'text-blue-500', bg: 'bg-blue-500/10' },
                 { label: 'False Positives', value: '94', trend: '+12.5%', trendUp: true, color: 'text-green-500', bg: 'bg-green-500/10' },
                 { label: 'Remediated', value: '33', trend: '+4.5%', trendUp: true, color: 'text-lime-500', bg: 'bg-lime-500/10' },
               ].map((stat) => (
-                <div key={stat.label} className="bg-neutral-950 rounded-2xl p-6 border border-neutral-800">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="text-sm text-neutral-400 font-medium">{stat.label}</div>
-                    <div className={`flex items-center gap-1 text-xs font-semibold ${stat.color} ${stat.bg} px-2 py-1 rounded`}>
+                <div key={stat.label} className="bg-neutral-950 rounded-2xl p-4 lg:p-6 border border-neutral-800">
+                  <div className="flex items-start justify-between mb-3 lg:mb-4">
+                    <div className="text-xs lg:text-sm text-neutral-400 font-medium">{stat.label}</div>
+                    <div className={`flex items-center gap-1 text-xs font-semibold ${stat.color} ${stat.bg} px-2 py-1 rounded flex-shrink-0`}>
                       {stat.trendUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                      {stat.trend}
+                      <span className="hidden sm:inline">{stat.trend}</span>
                     </div>
                   </div>
-                  <div className="text-3xl font-bold">{stat.value}</div>
-                  <div className="text-xs text-neutral-500 mt-2">
+                  <div className="text-2xl lg:text-3xl font-bold">{stat.value}</div>
+                  <div className="text-xs text-neutral-500 mt-2 hidden sm:block">
                     {stat.trendUp ? 'Strong performance' : 'Needs attention'}
                   </div>
-                  <div className="text-xs text-neutral-600 mt-1">
+                  <div className="text-xs text-neutral-600 mt-1 hidden sm:block">
                     {stat.trendUp ? 'Exceeds expectations' : 'Monitor closely'}
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="bg-neutral-950 rounded-2xl border border-neutral-800 p-6 mb-8">
-              <div className="flex items-center justify-between mb-6">
+            <div className="bg-neutral-950 rounded-2xl border border-neutral-800 p-4 lg:p-6 mb-6 lg:mb-8">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4 lg:mb-6">
                 <div>
-                  <h3 className="text-base font-semibold mb-1">Threat Detection Timeline</h3>
+                  <h3 className="text-sm lg:text-base font-semibold mb-1">Threat Detection Timeline</h3>
                   <p className="text-xs text-neutral-500">Total detections over time</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 overflow-x-auto pb-2 lg:pb-0">
                   {['Last 3 months', 'Last 30 days', 'Last 7 days'].map((range) => (
                     <button
                       key={range}
                       onClick={() => setTimeRange(range)}
-                      className={`text-xs px-4 py-2 rounded-lg font-medium transition-colors ${
+                      className={`text-xs px-3 lg:px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
                         range === 'Last 7 days'
                           ? 'bg-neutral-900 text-white border border-neutral-700'
                           : 'text-neutral-400 hover:text-white'
@@ -459,30 +489,33 @@ export default function ThreatHuntingPlatform() {
             </div>
 
             <div className="bg-neutral-950 rounded-2xl border border-neutral-800 overflow-hidden">
-              <div className="p-6 border-b border-neutral-800">
-                <div className="flex items-center gap-4">
-                  <button className="text-sm font-medium px-4 py-2 bg-neutral-900 rounded-lg border-b-2 border-white">
+              <div className="p-4 lg:p-6 border-b border-neutral-800">
+                <div className="flex items-center gap-2 lg:gap-4 overflow-x-auto pb-2 lg:pb-0">
+                  <button className="text-xs lg:text-sm font-medium px-3 lg:px-4 py-2 bg-neutral-900 rounded-lg border-b-2 border-white whitespace-nowrap">
                     Outline
                   </button>
-                  <button className="text-sm font-medium text-neutral-400 hover:text-white px-4 py-2 flex items-center gap-2">
-                    Past Performance
+                  <button className="text-xs lg:text-sm font-medium text-neutral-400 hover:text-white px-3 lg:px-4 py-2 flex items-center gap-2 whitespace-nowrap">
+                    <span className="hidden sm:inline">Past Performance</span>
+                    <span className="sm:hidden">Past</span>
                     <span className="bg-neutral-800 text-neutral-400 text-xs px-2 py-0.5 rounded">3</span>
                   </button>
-                  <button className="text-sm font-medium text-neutral-400 hover:text-white px-4 py-2 flex items-center gap-2">
-                    Key Personnel
+                  <button className="text-xs lg:text-sm font-medium text-neutral-400 hover:text-white px-3 lg:px-4 py-2 flex items-center gap-2 whitespace-nowrap">
+                    <span className="hidden sm:inline">Key Personnel</span>
+                    <span className="sm:hidden">Personnel</span>
                     <span className="bg-neutral-800 text-neutral-400 text-xs px-2 py-0.5 rounded">2</span>
                   </button>
-                  <button className="text-sm font-medium text-neutral-400 hover:text-white px-4 py-2">
+                  <button className="text-xs lg:text-sm font-medium text-neutral-400 hover:text-white px-3 lg:px-4 py-2 whitespace-nowrap hidden md:block">
                     Focus Documents
                   </button>
                   <div className="ml-auto flex gap-2">
-                    <button className="text-sm px-4 py-2 bg-neutral-900 hover:bg-neutral-800 rounded-lg border border-neutral-800 transition-colors flex items-center gap-2">
+                    <button className="text-xs lg:text-sm px-3 lg:px-4 py-2 bg-neutral-900 hover:bg-neutral-800 rounded-lg border border-neutral-800 transition-colors items-center gap-2 hidden md:flex">
                       <span>⚙</span>
-                      Customize Columns
+                      <span className="hidden lg:inline">Customize Columns</span>
                     </button>
-                    <button className="text-sm px-4 py-2 bg-white hover:bg-neutral-200 text-black rounded-lg font-medium transition-colors flex items-center gap-2">
+                    <button className="text-xs lg:text-sm px-3 lg:px-4 py-2 bg-white hover:bg-neutral-200 text-black rounded-lg font-medium transition-colors flex items-center gap-2 whitespace-nowrap">
                       <Plus className="w-4 h-4" />
-                      Add Section
+                      <span className="hidden sm:inline">Add Section</span>
+                      <span className="sm:hidden">Add</span>
                     </button>
                   </div>
                 </div>
@@ -538,8 +571,8 @@ export default function ThreatHuntingPlatform() {
 
         {/* Integrations View */}
         {activeView === 'integrations' && (
-          <div className="flex-1 overflow-y-auto px-8 py-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="flex-1 overflow-y-auto px-4 lg:px-8 py-4 lg:py-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
               {[
                 { name: 'Splunk', type: 'SIEM', status: 'connected', desc: 'Security Information and Event Management' },
                 { name: 'CrowdStrike', type: 'EDR', status: 'connected', desc: 'Endpoint Detection and Response' },
@@ -548,13 +581,13 @@ export default function ThreatHuntingPlatform() {
                 { name: 'Microsoft Sentinel', type: 'SIEM', status: 'disconnected', desc: 'Cloud-native SIEM' },
                 { name: 'Azure AD', type: 'IAM', status: 'disconnected', desc: 'Cloud Identity Management' },
               ].map((platform) => (
-                <div key={platform.name} className="bg-neutral-950 rounded-2xl border border-neutral-800 p-6 hover:border-neutral-700 transition-colors">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="font-semibold text-base mb-1.5">{platform.name}</h3>
-                      <p className="text-sm text-neutral-400">{platform.desc}</p>
+                <div key={platform.name} className="bg-neutral-950 rounded-2xl border border-neutral-800 p-4 lg:p-6 hover:border-neutral-700 transition-colors">
+                  <div className="flex items-start justify-between mb-3 lg:mb-4 gap-3">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-semibold text-sm lg:text-base mb-1 lg:mb-1.5 truncate">{platform.name}</h3>
+                      <p className="text-xs lg:text-sm text-neutral-400 line-clamp-2">{platform.desc}</p>
                     </div>
-                    <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${
+                    <span className={`text-xs px-2 lg:px-3 py-1 lg:py-1.5 rounded-full font-medium whitespace-nowrap flex-shrink-0 ${
                       platform.status === 'connected' 
                         ? 'bg-green-500/10 text-green-500 border border-green-500/20' 
                         : 'bg-neutral-800 text-neutral-400 border border-neutral-700'
@@ -562,11 +595,11 @@ export default function ThreatHuntingPlatform() {
                       {platform.status}
                     </span>
                   </div>
-                  <div className="flex items-center gap-3 pt-4 border-t border-neutral-800">
-                    <span className="text-xs text-neutral-500 bg-neutral-900 px-3 py-1.5 rounded-lg border border-neutral-800">
+                  <div className="flex items-center gap-2 lg:gap-3 pt-3 lg:pt-4 border-t border-neutral-800">
+                    <span className="text-xs text-neutral-500 bg-neutral-900 px-2 lg:px-3 py-1 lg:py-1.5 rounded-lg border border-neutral-800">
                       {platform.type}
                     </span>
-                    <button className={`ml-auto text-sm px-4 py-2 rounded-lg font-medium transition-colors ${
+                    <button className={`ml-auto text-xs lg:text-sm px-3 lg:px-4 py-1.5 lg:py-2 rounded-lg font-medium transition-colors ${
                       platform.status === 'connected' 
                         ? 'bg-neutral-900 hover:bg-neutral-800 text-white border border-neutral-800' 
                         : 'bg-lime-500 hover:bg-lime-400 text-black'
@@ -582,44 +615,44 @@ export default function ThreatHuntingPlatform() {
 
         {/* Settings View */}
         {activeView === 'settings' && (
-          <div className="flex-1 overflow-y-auto px-8 py-6">
-            <div className="max-w-3xl">
-              <div className="bg-neutral-950 rounded-2xl border border-neutral-800 p-6 mb-6">
-                <h3 className="text-base font-semibold mb-5">Autonomous Hunting</h3>
-                <div className="space-y-4">
-                  <label className="flex items-center justify-between p-4 bg-black rounded-xl border border-neutral-800 hover:border-neutral-700 transition-colors cursor-pointer">
-                    <div>
-                      <div className="text-sm font-medium mb-1">Enable continuous threat hunting</div>
+          <div className="flex-1 overflow-y-auto px-4 lg:px-8 py-4 lg:py-6">
+            <div className="max-w-3xl mx-auto">
+              <div className="bg-neutral-950 rounded-2xl border border-neutral-800 p-4 lg:p-6 mb-4 lg:mb-6">
+                <h3 className="text-sm lg:text-base font-semibold mb-4 lg:mb-5">Autonomous Hunting</h3>
+                <div className="space-y-3 lg:space-y-4">
+                  <label className="flex items-start sm:items-center justify-between p-3 lg:p-4 bg-black rounded-xl border border-neutral-800 hover:border-neutral-700 transition-colors cursor-pointer gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs lg:text-sm font-medium mb-1">Enable continuous threat hunting</div>
                       <div className="text-xs text-neutral-500">AI agent will actively hunt for threats 24/7</div>
                     </div>
-                    <input type="checkbox" defaultChecked className="w-5 h-5" />
+                    <input type="checkbox" defaultChecked className="w-5 h-5 flex-shrink-0" />
                   </label>
-                  <label className="flex items-center justify-between p-4 bg-black rounded-xl border border-neutral-800 hover:border-neutral-700 transition-colors cursor-pointer">
-                    <div>
-                      <div className="text-sm font-medium mb-1">Auto-remediate false positives</div>
+                  <label className="flex items-start sm:items-center justify-between p-3 lg:p-4 bg-black rounded-xl border border-neutral-800 hover:border-neutral-700 transition-colors cursor-pointer gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs lg:text-sm font-medium mb-1">Auto-remediate false positives</div>
                       <div className="text-xs text-neutral-500">Automatically dismiss confirmed false positives</div>
                     </div>
-                    <input type="checkbox" className="w-5 h-5" />
+                    <input type="checkbox" className="w-5 h-5 flex-shrink-0" />
                   </label>
                 </div>
               </div>
 
-              <div className="bg-neutral-950 rounded-2xl border border-neutral-800 p-6">
-                <h3 className="text-base font-semibold mb-5">Alert Preferences</h3>
-                <div className="space-y-4">
-                  <label className="flex items-center justify-between p-4 bg-black rounded-xl border border-neutral-800 hover:border-neutral-700 transition-colors cursor-pointer">
-                    <div>
-                      <div className="text-sm font-medium mb-1">Email notifications</div>
+              <div className="bg-neutral-950 rounded-2xl border border-neutral-800 p-4 lg:p-6">
+                <h3 className="text-sm lg:text-base font-semibold mb-4 lg:mb-5">Alert Preferences</h3>
+                <div className="space-y-3 lg:space-y-4">
+                  <label className="flex items-start sm:items-center justify-between p-3 lg:p-4 bg-black rounded-xl border border-neutral-800 hover:border-neutral-700 transition-colors cursor-pointer gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs lg:text-sm font-medium mb-1">Email notifications</div>
                       <div className="text-xs text-neutral-500">Receive email alerts for critical threats</div>
                     </div>
-                    <input type="checkbox" defaultChecked className="w-5 h-5" />
+                    <input type="checkbox" defaultChecked className="w-5 h-5 flex-shrink-0" />
                   </label>
-                  <label className="flex items-center justify-between p-4 bg-black rounded-xl border border-neutral-800 hover:border-neutral-700 transition-colors cursor-pointer">
-                    <div>
-                      <div className="text-sm font-medium mb-1">Slack integration</div>
+                  <label className="flex items-start sm:items-center justify-between p-3 lg:p-4 bg-black rounded-xl border border-neutral-800 hover:border-neutral-700 transition-colors cursor-pointer gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs lg:text-sm font-medium mb-1">Slack integration</div>
                       <div className="text-xs text-neutral-500">Send notifications to Slack channels</div>
                     </div>
-                    <input type="checkbox" className="w-5 h-5" />
+                    <input type="checkbox" className="w-5 h-5 flex-shrink-0" />
                   </label>
                 </div>
               </div>

@@ -118,7 +118,7 @@ python main.py
 
 ### Run the Web UI
 
-The project includes a modern React-based web interface built with **React**, **Tailwind CSS**, and **lucide-react**. The UI provides:
+The project includes a modern React-based web interface built with **React**, **Tailwind CSS**, and **lucide-react**. The UI is **fully responsive** and optimized for desktop, tablet, and mobile devices. Features include:
 
 - **AI Threat Hunting Chat**: Interactive chat interface to query the AI agent
 - **Real-time Activity Feed**: See step-by-step agent operations as they happen
@@ -126,6 +126,7 @@ The project includes a modern React-based web interface built with **React**, **
 - **Raw Search Results**: View raw JSON responses from security platforms
 - **Dashboard View**: Security metrics and threat detection timeline
 - **Integrations View**: Manage connected security platforms
+- **Responsive Design**: Seamless experience across all screen sizes with mobile menu
 
 #### Development Mode
 
