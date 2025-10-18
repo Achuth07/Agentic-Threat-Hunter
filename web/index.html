@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Threat Hunting Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app" data-sidebar="collapsed">
+      <aside class="sidebar glass" id="sidebar">
+        <div class="sidebar-top">
+          <button id="toggle-sidebar" class="burger" aria-label="Toggle sidebar">
+            <span></span><span></span><span></span>
+          </button>
+          <div class="brand">
+            <div class="logo">AI</div>
+            <div class="brand-text">Agentic Hunter</div>
+          </div>
+        </div>
+        <nav class="nav">
+          <a class="nav-item" data-route="dashboard" title="Dashboard">
+            <span class="ico">🏠</span>
+            <span class="label">Dashboard</span>
+          </a>
+          <a class="nav-item active" data-route="chat" title="Agentic Chat">
+            <span class="ico">💬</span>
+            <span class="label">Agentic Chat</span>
+          </a>
+          <a class="nav-item" data-route="integrations" title="Integrations">
+            <span class="ico">�</span>
+            <span class="label">Integrations</span>
+          </a>
+          <a class="nav-item" data-route="settings" title="Settings">
+            <span class="ico">⚙️</span>
+            <span class="label">Settings</span>
+          </a>
+        </nav>
+      </aside>
+
+      <main class="content">
+        <header class="header glass">
+          <h1>Agentic Chat <span class="badge">Active</span></h1>
+          <div class="status">Last scan: <span id="last-scan">just now</span> <div class="avatar">JD</div></div>
+        </header>
+
+        <section class="chat-card glass">
+          <div class="chat-header">
+            <div class="title">
+              <div class="avatar ai">🤖</div>
+              <div>
+                <h2>AI Threat Hunter</h2>
+                <p class="sub">Ask me to investigate threats, analyze alerts, or check security status</p>
+              </div>
+            </div>
+          </div>
+          <div class="chat-input">
+            <input id="chat-input" placeholder="Type your question…" />
+            <button id="send-btn" aria-label="Send">➤</button>
+          </div>
+        </section>
+
+        <section class="grid">
+          <div class="card wide glass">
+            <div class="card-title">
+              <h3>AI Agent Activity</h3>
+              <span class="dot analyzing" id="analyzing-dot"></span>
+            </div>
+            <ul id="activity-list" class="activity-list"></ul>
+          </div>
+          <div class="card stats glass">
+            <div class="stat">
+              <div class="label">Alerts Analyzed</div>
+              <div class="value" id="stat-analyzed">0</div>
+            </div>
+            <div class="stat">
+              <div class="label">False Positives</div>
+              <div class="value warn" id="stat-fp">0</div>
+            </div>
+            <div class="stat">
+              <div class="label">True Threats</div>
+              <div class="value danger" id="stat-tt">0</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card glass">
+          <h3>Recent Findings</h3>
+          <div id="findings" class="findings"></div>
+        </section>
+
+        <section class="card glass" id="results-card" style="display:none;">
+          <h3>Latest Search Results</h3>
+          <pre id="results"></pre>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+  </html>

@@ -115,6 +115,21 @@ Currently, the project contains test scripts for the core components. You can ru
 python main.py
 ```
 
+### Run the Web UI (new)
+
+Start the FastAPI server and open the dashboard at http://localhost:8000.
+
+```bash
+pip install -r requirements.txt
+python server.py
+```
+
+In the UI you can:
+
+- Chat with the LLM at the top bar; messages are sent via WebSocket to the backend.
+- Watch step-by-step agent activity as it generates SPL and executes the Splunk query.
+- See summarized search results and recent findings.
+
 ## Roadmap
 
 This project is in active development. The next steps are:
