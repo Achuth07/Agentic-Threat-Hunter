@@ -118,7 +118,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
               {integrations.map((int) => (
                 <div key={int.name} className="flex items-center gap-3 px-3 py-2.5 text-neutral-400 transition-colors">
                   <div className="w-5 h-5 flex items-center justify-center">
-                    <div className={`w-2 h-2 rounded-full ${int.status === 'connected' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    <div className={`w-2 h-2 rounded-full ${int.status === 'connected' ? 'bg-brand' : 'bg-red-500'}`}></div>
                   </div>
                   <span className="text-sm font-medium">{int.name}</span>
                 </div>
@@ -160,7 +160,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
               {/* Mobile icon-only */}
               <button
                 onClick={onNewHunt}
-                className="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white text-black hover:bg-neutral-200 transition-colors"
+                className="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg bg-brand text-black hover:bg-brand-600 transition-colors"
                 aria-label="Start a new threat hunt"
                 title="Start a new threat hunt"
               >
@@ -169,7 +169,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
               {/* Desktop labeled */}
               <button
                 onClick={onNewHunt}
-                className="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white text-black font-medium hover:bg-neutral-200 transition-colors"
+                className="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-brand text-black font-medium hover:bg-brand-600 transition-colors"
                 title="Start a new threat hunt"
               >
                 <Plus className="w-4 h-4" />
@@ -179,10 +179,10 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
             )}
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs ${
               isConnected 
-                ? 'border-green-500/20 bg-green-500/10 text-green-500' 
+                ? 'border-brand/20 bg-brand/10 text-brand' 
                 : 'border-red-500/20 bg-red-500/10 text-red-500'
             }`}>
-              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-brand' : 'bg-red-500'}`}></div>
               <span className="hidden sm:inline">{isConnected ? 'Connected' : 'Disconnected'}</span>
             </div>
           </div>
@@ -196,13 +196,13 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
               {messages.length === 0 ? (
                 <div className="flex gap-4">
                   <div className="w-10 h-10 rounded-xl bg-neutral-900 flex items-center justify-center flex-shrink-0">
-                    <Shield className="w-5 h-5 text-lime-500" />
+                    <Shield className="w-5 h-5 text-brand" />
                   </div>
                   <div className="flex-1">
                     <div className="bg-neutral-950 rounded-2xl p-5 border border-neutral-800">
                       <p className="text-sm text-neutral-200 leading-relaxed">
                         Hello! I'm your AI threat hunting agent. I can help you search Splunk for security threats. 
-                        Try asking me something like: <span className="text-lime-500 font-medium">"Find failed authentication attempts in the last 24 hours"</span>
+                        Try asking me something like: <span className="text-brand font-medium">"Find failed authentication attempts in the last 24 hours"</span>
                       </p>
                     </div>
                   </div>
@@ -212,7 +212,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                   <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : ''}`}>
                     {msg.role !== 'user' && (
                       <div className="w-10 h-10 rounded-xl bg-neutral-900 flex items-center justify-center flex-shrink-0">
-                        <Shield className="w-5 h-5 text-lime-500" />
+                        <Shield className="w-5 h-5 text-brand" />
                       </div>
                     )}
                     <div className={`flex-1 ${msg.role === 'user' ? 'max-w-full lg:max-w-2xl' : ''}`}>
@@ -238,7 +238,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
               {activities.length > 0 && (
                 <div className="flex gap-4">
                   <div className="w-10 h-10 rounded-xl bg-neutral-900 flex items-center justify-center flex-shrink-0">
-                    <Shield className="w-5 h-5 text-lime-500" />
+                    <Shield className="w-5 h-5 text-brand" />
                   </div>
                   <div className="flex-1">
                     <div className="bg-neutral-950 rounded-2xl p-5 border border-neutral-800">
@@ -254,7 +254,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                                   <Clock className="w-4 h-4 text-blue-500" />
                                 </div>
                               ) : activity.type === 'success' ? (
-                                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                                <CheckCircle2 className="w-4 h-4 text-brand" />
                               ) : (
                                 <AlertCircle className="w-4 h-4 text-red-500" />
                               )}
@@ -262,7 +262,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                             </div>
                             <span className={`text-xs font-medium ${
                               activity.type === 'info' ? 'text-blue-500' : 
-                              activity.type === 'success' ? 'text-green-500' : 
+                              activity.type === 'success' ? 'text-brand' : 
                               'text-red-500'
                             }`}>
                               {activity.type === 'info' ? 'In Progress' : 
@@ -281,12 +281,12 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
               {searchResults && searchResults.summary && (
                 <div className="flex gap-4 mt-6">
                   <div className="w-10 h-10 rounded-xl bg-neutral-900 flex items-center justify-center flex-shrink-0">
-                    <Shield className="w-5 h-5 text-lime-500" />
+                    <Shield className="w-5 h-5 text-brand" />
                   </div>
                   <div className="flex-1">
                     <div className="bg-neutral-950 rounded-2xl p-5 border border-neutral-800">
                       <p className="text-sm text-neutral-200 leading-relaxed">
-                        <span className="font-semibold text-lime-500">Here is a concise and human-friendly summary:</span><br />
+                        <span className="font-semibold text-brand">Here is a concise and human-friendly summary:</span><br />
                         {searchResults.summary}
                       </p>
                     </div>
@@ -305,12 +305,12 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                   onChange={(e) => setInputMessage(e.target.value)}
                   placeholder="Ask the AI agent to investigate threats..."
                   disabled={!isConnected}
-                  className="flex-1 bg-neutral-950 border border-neutral-800 rounded-xl px-4 lg:px-5 py-2.5 lg:py-3 text-xs lg:text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-lime-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 bg-neutral-950 border border-neutral-800 rounded-xl px-4 lg:px-5 py-2.5 lg:py-3 text-xs lg:text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <button 
                   type="submit"
                   disabled={!isConnected || !inputMessage.trim()}
-                  className="bg-lime-500 hover:bg-lime-400 text-black px-4 lg:px-6 py-2.5 lg:py-3 rounded-xl flex items-center gap-2 font-medium transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-lime-500"
+                  className="bg-brand hover:bg-brand-600 text-black px-4 lg:px-6 py-2.5 lg:py-3 rounded-xl flex items-center gap-2 font-medium transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand"
                 >
                   <span className="text-xs lg:text-sm">Send</span>
                 </button>
@@ -354,7 +354,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                     <div key={idx} className="bg-neutral-950 rounded-xl border border-neutral-800 overflow-hidden">
                       <div className="bg-neutral-900 px-4 lg:px-5 py-3 border-b border-neutral-800 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <span className="text-xs font-semibold text-lime-500 bg-lime-500/10 px-2 py-1 rounded">
+                          <span className="text-xs font-semibold text-brand bg-brand/10 px-2 py-1 rounded">
                             Splunk
                           </span>
                           <span className="text-xs text-neutral-500">Event {idx + 1}</span>
@@ -402,7 +402,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                         activity.type === 'error' 
                           ? 'bg-red-500/10 text-red-500'
                           : activity.type === 'success'
-                          ? 'bg-green-500/10 text-green-500'
+                          ? 'bg-brand/10 text-brand'
                           : 'bg-blue-500/10 text-blue-500'
                       }`}>
                         {activity.type === 'error' && <AlertCircle className="w-4 h-4" />}
@@ -441,7 +441,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                     </div>
                     <span className={`text-xs px-2 lg:px-3 py-1 lg:py-1.5 rounded-full font-medium whitespace-nowrap flex-shrink-0 ${
                       platform.status === 'connected' 
-                        ? 'bg-green-500/10 text-green-500 border border-green-500/20' 
+                        ? 'bg-brand/10 text-brand border border-brand/20' 
                         : 'bg-red-500/10 text-red-500 border border-red-500/20'
                     }`}>
                       {platform.status}
@@ -472,7 +472,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                         {isConnected ? 'Connected to backend' : 'Disconnected from backend'}
                       </div>
                     </div>
-                    <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-brand' : 'bg-red-500'}`}></div>
                   </div>
                 </div>
               </div>
