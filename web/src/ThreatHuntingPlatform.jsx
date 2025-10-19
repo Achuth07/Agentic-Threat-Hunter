@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Activity, Plug, Settings, Menu, Shield, Search, AlertCircle, CheckCircle2, Clock, Copy, Plus } from 'lucide-react';
+import { MessageSquare, Activity, Plug, Settings, Menu, Shield, Search, AlertCircle, CheckCircle2, Clock, Copy, Plus, TrendingUp, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
 export default function ThreatHuntingPlatform({ messages, activities, searchResults, isConnected, onSendMessage, onNewHunt }) {
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeView, setActiveView] = useState('chat');
+  const [dashboardRange, setDashboardRange] = useState('3m'); // 3m | 30d | 7d
   const [inputMessage, setInputMessage] = useState('');
   const messagesEndRef = useRef(null);
   const didInitialScrollRef = useRef(false);
@@ -35,6 +36,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
   };
 
   const menuItems = [
+    { id: 'dashboard', icon: TrendingUp, label: 'Dashboard' },
     { id: 'chat', icon: MessageSquare, label: 'AI Chat' },
     { id: 'activity', icon: Activity, label: 'Activity Feed' },
     { id: 'integrations', icon: Plug, label: 'Integrations' },
@@ -141,12 +143,14 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
             </button>
             <div className="min-w-0">
               <h1 className="text-lg lg:text-2xl font-semibold mb-0.5 lg:mb-1 truncate">
+                {activeView === 'dashboard' && 'Dashboard'}
                 {activeView === 'chat' && 'AI Threat Hunting'}
                 {activeView === 'activity' && 'Activity Feed'}
                 {activeView === 'integrations' && 'Integrations'}
                 {activeView === 'settings' && 'Settings'}
               </h1>
               <p className="text-xs lg:text-sm text-neutral-400 hidden sm:block truncate">
+                {activeView === 'dashboard' && 'Overview of hunts, alerts, and activity'}
                 {activeView === 'chat' && 'Chat with the AI agent to hunt for threats in Splunk'}
                 {activeView === 'activity' && 'Real-time agent operations and workflow'}
                 {activeView === 'integrations' && 'Connected security platforms and data sources'}
@@ -187,6 +191,144 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
             </div>
           </div>
         </div>
+
+        {activeView === 'dashboard' && (
+          <div className="flex-1 overflow-y-auto px-4 lg:px-8 py-4 lg:py-6">
+            {/* Time range + Quick Create */}
+            <div className="flex items-center justify-between mb-4 lg:mb-6">
+              <div className="flex gap-2 bg-neutral-950 border border-neutral-800 rounded-xl p-1">
+                {[
+                  { id: '3m', label: 'Last 3 months' },
+                  { id: '30d', label: 'Last 30 days' },
+                  { id: '7d', label: 'Last 7 days' },
+                ].map((r) => (
+                  <button
+                    key={r.id}
+                    onClick={() => setDashboardRange(r.id)}
+                    className={`text-xs lg:text-sm px-3 py-1.5 rounded-lg transition-colors ${dashboardRange === r.id ? 'bg-brand text-black' : 'text-neutral-400 hover:text-white'}`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+              <button className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-brand text-black font-medium hover:bg-brand-600 transition-colors">
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">Quick Create</span>
+              </button>
+            </div>
+
+            {/* Stat cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5 mb-4 lg:mb-6">
+              {[
+                { title: 'Detections', value: '1,250', delta: '+12.5%', up: true, sub: 'Trending up this month' },
+                { title: 'New Alerts', value: '1,234', delta: '-20%', up: false, sub: 'Down vs previous period' },
+                { title: 'Active Incidents', value: '45,678', delta: '+12.5%', up: true, sub: 'Strong user retention' },
+                { title: 'MTTR', value: '4.5h', delta: '+4.5%', up: true, sub: 'Steady performance increase' },
+              ].map((c, idx) => (
+                <div key={idx} className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4 lg:p-5">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <p className="text-xs text-neutral-400 mb-1">{c.title}</p>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl lg:text-2xl font-semibold text-white">{c.value}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${c.up ? 'text-brand border-brand/30 bg-brand/10' : 'text-red-500 border-red-500/30 bg-red-500/10'}`}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {c.up ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                            {c.delta}
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-neutral-500">{c.sub}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Area chart */}
+            <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4 lg:p-6 mb-6">
+              <div className="flex items-center justify-between mb-3 lg:mb-4">
+                <div>
+                  <h3 className="text-sm lg:text-base font-semibold">Total Visitors</h3>
+                  <p className="text-xs text-neutral-500">Total for the selected range</p>
+                </div>
+              </div>
+              <div className="w-full h-56 lg:h-64">
+                <svg viewBox="0 0 600 240" className="w-full h-full">
+                  <defs>
+                    <linearGradient id="gradBrand" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="rgba(34,197,94,0.35)" />
+                      <stop offset="100%" stopColor="rgba(34,197,94,0.05)" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M0,120 C60,40 120,20 180,80 C240,140 300,180 360,150 C420,120 480,60 540,120 L540,240 L0,240 Z" fill="url(#gradBrand)" stroke="none" />
+                  <path d="M0,140 C60,100 120,80 180,100 C240,120 300,160 360,140 C420,120 480,100 540,160" stroke="#22c55e" strokeWidth="2" fill="none" />
+                  <g fill="#555" fontSize="10">
+                    <text x="60" y="230">Jun 23</text>
+                    <text x="140" y="230">Jun 24</text>
+                    <text x="220" y="230">Jun 25</text>
+                    <text x="300" y="230">Jun 26</text>
+                    <text x="380" y="230">Jun 27</text>
+                    <text x="470" y="230">Jun 28</text>
+                  </g>
+                </svg>
+              </div>
+            </div>
+
+            {/* Pills row */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              {['Outline', 'Past Performance', 'Key Personnel', 'Focus Documents'].map((p, i) => (
+                <span key={p} className={`text-xs px-2 py-1 rounded-lg border ${i===0 ? 'bg-neutral-900 text-white' : 'text-neutral-400 hover:text-white'} border-neutral-800`}>{p}</span>
+              ))}
+            </div>
+
+            {/* Sections */}
+            <div className="grid grid-cols-1 gap-3">
+              {['Open Incidents', 'Recent Hunts', 'Top Sources'].map((sec) => (
+                <div key={sec} className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold">{sec}</h4>
+                    <button className="text-xs text-neutral-400 hover:text-white">View all</button>
+                  </div>
+                  <p className="text-xs text-neutral-500 mt-1">Data will appear here as activity occurs.</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Connections */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-4">
+              {/* Connected Systems (Security Tools) */}
+              <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+                <h4 className="text-sm font-semibold mb-2">Connected Systems</h4>
+                <p className="text-xs text-neutral-500 mb-3">Security tools currently connected</p>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between bg-black rounded-lg border border-neutral-800 px-3 py-2">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs px-2 py-1 rounded bg-neutral-900 border border-neutral-800">SIEM</span>
+                      <span className="text-sm text-neutral-300 font-medium">Splunk</span>
+                    </div>
+                    <span className="text-xs px-2 py-1 rounded-full border bg-brand/10 text-brand border-brand/20">connected</span>
+                  </div>
+                  {/* Add more tools here as they’re integrated */}
+                </div>
+              </div>
+
+              {/* Connected LLM */}
+              <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+                <h4 className="text-sm font-semibold mb-2">Connected LLM</h4>
+                <p className="text-xs text-neutral-500 mb-3">Reasoning engine powering the agent</p>
+                <div className="flex items-center justify-between bg-black rounded-lg border border-neutral-800 px-3 py-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs px-2 py-1 rounded bg-neutral-900 border border-neutral-800">LLM</span>
+                    <span className="text-sm text-neutral-300 font-medium">LLaMA3:8b via Ollama</span>
+                  </div>
+                  <span className="text-xs px-2 py-1 rounded-full border bg-brand/10 text-brand border-brand/20">connected</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Chat View */}
         {activeView === 'chat' && (
