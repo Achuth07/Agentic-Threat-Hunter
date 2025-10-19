@@ -45,8 +45,8 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
 
   const integrations = [
     { name: 'Splunk', type: 'SIEM', status: isConnected ? 'connected' : 'disconnected', description: 'Security Information and Event Management' },
-    { name: 'Ollama', type: 'LLM', status: isConnected ? 'connected' : 'disconnected', description: 'Local Language Model for AI Analysis' },
   ];
+  const llmIntegration = { name: 'LLaMA3:8b via Ollama', status: isConnected ? 'connected' : 'disconnected' };
 
   return (
     <div className="flex h-screen bg-black text-white overflow-hidden">
@@ -116,7 +116,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
             <div className="px-4 pb-2">
               <div className="text-xs text-neutral-500 font-medium mb-3 px-3">Connected Systems</div>
             </div>
-            <div className="px-4 pb-6">
+            <div className="px-4 pb-4">
               {integrations.map((int) => (
                 <div key={int.name} className="flex items-center gap-3 px-3 py-2.5 text-neutral-400 transition-colors">
                   <div className="w-5 h-5 flex items-center justify-center">
@@ -125,6 +125,17 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                   <span className="text-sm font-medium">{int.name}</span>
                 </div>
               ))}
+            </div>
+            <div className="px-4 pb-2">
+              <div className="text-xs text-neutral-500 font-medium mb-3 px-3">Connected LLM</div>
+            </div>
+            <div className="px-4 pb-6">
+              <div className="flex items-center gap-3 px-3 py-2.5 text-neutral-400 transition-colors">
+                <div className="w-5 h-5 flex items-center justify-center">
+                  <div className={`w-2 h-2 rounded-full ${llmIntegration.status === 'connected' ? 'bg-brand' : 'bg-red-500'}`}></div>
+                </div>
+                <span className="text-sm font-medium">{llmIntegration.name}</span>
+              </div>
             </div>
           </>
         )}
@@ -294,38 +305,6 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                   <p className="text-xs text-neutral-500 mt-1">Data will appear here as activity occurs.</p>
                 </div>
               ))}
-            </div>
-
-            {/* Connections */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-4">
-              {/* Connected Systems (Security Tools) */}
-              <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
-                <h4 className="text-sm font-semibold mb-2">Connected Systems</h4>
-                <p className="text-xs text-neutral-500 mb-3">Security tools currently connected</p>
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between bg-black rounded-lg border border-neutral-800 px-3 py-2">
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs px-2 py-1 rounded bg-neutral-900 border border-neutral-800">SIEM</span>
-                      <span className="text-sm text-neutral-300 font-medium">Splunk</span>
-                    </div>
-                    <span className="text-xs px-2 py-1 rounded-full border bg-brand/10 text-brand border-brand/20">connected</span>
-                  </div>
-                  {/* Add more tools here as they’re integrated */}
-                </div>
-              </div>
-
-              {/* Connected LLM */}
-              <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
-                <h4 className="text-sm font-semibold mb-2">Connected LLM</h4>
-                <p className="text-xs text-neutral-500 mb-3">Reasoning engine powering the agent</p>
-                <div className="flex items-center justify-between bg-black rounded-lg border border-neutral-800 px-3 py-2">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs px-2 py-1 rounded bg-neutral-900 border border-neutral-800">LLM</span>
-                    <span className="text-sm text-neutral-300 font-medium">LLaMA3:8b via Ollama</span>
-                  </div>
-                  <span className="text-xs px-2 py-1 rounded-full border bg-brand/10 text-brand border-brand/20">connected</span>
-                </div>
-              </div>
             </div>
           </div>
         )}
