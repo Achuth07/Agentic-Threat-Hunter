@@ -239,11 +239,13 @@ async def ws_chat(websocket: WebSocket):
                 if t.startswith("```") and t.endswith("```"):
                     t = t.strip("`").strip()
                 # If contains label 'SPL:', capture after it
-                m = re.search(r"(?i)\bSPL\s*:\s*(.+)", t)
+                m = re.search(r"(?i)\bSPL\s*:\s*(.+)", t, re.DOTALL)
                 if m:
                     t = m.group(1).strip()
-                # Remove surrounding quotes or backticks
-                t = t.strip("`\"")
+                # Aggressively remove ALL backticks (single, double, triple) to prevent Splunk macro errors
+                t = t.replace("`", "")
+                # Remove surrounding quotes
+                t = t.strip("\"'")
                 return t
 
             spl = _extract_spl_text(raw_spl)
@@ -256,11 +258,13 @@ async def ws_chat(websocket: WebSocket):
             })
 
             def _normalize_spl(q: str) -> str:
-                # Remove triple backtick blocks if present
+                # Remove triple backtick blocks if present (defensive, already cleaned in extract)
                 q = q.strip()
                 if q.startswith("```") and q.endswith("```"):
                     q = q.strip("`")
                 q = q.strip()
+                # Final backtick cleanup to ensure Splunk doesn't see macro syntax artifacts
+                q = q.replace("`", "")
                 lower = q.lower().lstrip()
                 generating = (
                     lower.startswith("search ")
@@ -306,6 +310,15 @@ async def ws_chat(websocket: WebSocket):
                     "icon": "clock",
                 })
                 normalized_spl = time_spl
+
+            # Log final SPL for debugging
+            await websocket.send_json({
+                "type": "activity",
+                "title": "Final SPL query to Splunk",
+                "detail": normalized_spl,
+                "status": "done",
+                "icon": "code",
+            })
 
             # 3) Execute Splunk search
             await websocket.send_json({
