@@ -20,8 +20,11 @@ SPLUNK_PORT = int(os.getenv("SPLUNK_PORT", "8089"))
 SPLUNK_USERNAME = os.getenv("SPLUNK_USERNAME")
 SPLUNK_PASSWORD = os.getenv("SPLUNK_PASSWORD")
 
-# Ollama model (set OLLAMA_MODEL=splunk_hunter in .env to use your custom model)
+# Ollama models
+# OLLAMA_MODEL is used for SPL generation. Default to custom 'splunk_hunter'.
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "splunk_hunter")
+# SUMMARY_MODEL is used for human-friendly summaries. Default to a fluent base model.
+SUMMARY_MODEL = os.getenv("SUMMARY_MODEL", "llama3:8b")
 # Default index policy
 DEFAULT_INDEX = os.getenv("DEFAULT_INDEX", "main")
 # Time policy mode: off | normalize | infer
@@ -114,8 +117,8 @@ User question: {question}
 Write a short, human-friendly summary.""",
             ),
         ])
-        # Use the same centralized Ollama model for summaries
-        llm = ChatOllama(model=OLLAMA_MODEL)
+        # Use summarization model separate from SPL generator
+        llm = ChatOllama(model=SUMMARY_MODEL)
         messages = prompt.format_messages(
             spl=spl, count=len(rows), sample=json.dumps(sample)[:4000], question=question
         )
@@ -227,7 +230,23 @@ async def ws_chat(websocket: WebSocket):
 
             ai_message = await run_in_threadpool(llm.invoke, messages)
             raw_spl = ai_message.content if hasattr(ai_message, "content") else str(ai_message)
-            spl = raw_spl.strip().strip("`")
+
+            # Extract SPL from potential few-shot patterns like "SPL: <query>" and strip backticks
+            import re
+            def _extract_spl_text(text: str) -> str:
+                t = text.strip()
+                # If backticked, remove code fences
+                if t.startswith("```") and t.endswith("```"):
+                    t = t.strip("`").strip()
+                # If contains label 'SPL:', capture after it
+                m = re.search(r"(?i)\bSPL\s*:\s*(.+)", t)
+                if m:
+                    t = m.group(1).strip()
+                # Remove surrounding quotes or backticks
+                t = t.strip("`\"")
+                return t
+
+            spl = _extract_spl_text(raw_spl)
             await websocket.send_json({
                 "type": "activity",
                 "title": "SPL generated",
