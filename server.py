@@ -20,8 +20,8 @@ SPLUNK_PORT = int(os.getenv("SPLUNK_PORT", "8089"))
 SPLUNK_USERNAME = os.getenv("SPLUNK_USERNAME")
 SPLUNK_PASSWORD = os.getenv("SPLUNK_PASSWORD")
 
-# Ollama model
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3:8b")
+# Ollama model (set OLLAMA_MODEL=splunk_hunter in .env to use your custom model)
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "splunk_hunter")
 # Default index policy
 DEFAULT_INDEX = os.getenv("DEFAULT_INDEX", "main")
 # Time policy mode: off | normalize | infer
@@ -114,6 +114,7 @@ User question: {question}
 Write a short, human-friendly summary.""",
             ),
         ])
+        # Use the same centralized Ollama model for summaries
         llm = ChatOllama(model=OLLAMA_MODEL)
         messages = prompt.format_messages(
             spl=spl, count=len(rows), sample=json.dumps(sample)[:4000], question=question
