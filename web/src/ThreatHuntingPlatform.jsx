@@ -406,10 +406,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                   </div>
                   <div className="flex-1">
                     <div className="bg-neutral-950 rounded-2xl p-5 border border-neutral-800">
-                      <p className="text-sm text-neutral-200 leading-relaxed">
-                        <span className="font-semibold text-brand">Here is a concise and human-friendly summary:</span><br />
-                        {searchResults.summary}
-                      </p>
+                      <p className="text-sm text-neutral-200 leading-relaxed">{searchResults.summary}</p>
                     </div>
                   </div>
                 </div>

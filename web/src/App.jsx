@@ -147,6 +147,9 @@ function App() {
 
   const sendMessage = (message) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      // Clear previous run's activity and summary before sending a new question
+      setActivities([])
+      setSearchResults(null)
       // Backend expects plain text, not JSON
       wsRef.current.send(message)
       setMessages(prev => [...prev, { role: 'user', content: message }])

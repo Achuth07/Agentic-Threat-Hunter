@@ -105,7 +105,7 @@ async def _summarize_results(question: str, spl: str, rows: list[dict]) -> str:
         prompt = ChatPromptTemplate.from_messages([
             (
                 "system",
-                "You are a security analyst. Summarize Splunk results for humans. Be concise (2-5 sentences). Mention counts and notable fields/values. Avoid code blocks.",
+                "You are a security analyst. Summarize Splunk results for humans. Be concise (2-5 sentences). Mention counts and notable fields/values. Avoid code blocks. Do not include any preamble like 'Here is', 'Here's', 'Summary:', or 'Overview:'. Write the summary sentences directly.",
             ),
             (
                 "human",
@@ -125,7 +125,12 @@ Write a short, human-friendly summary.""",
         from starlette.concurrency import run_in_threadpool
         msg = await run_in_threadpool(llm.invoke, messages)
         text = msg.content if hasattr(msg, "content") else str(msg)
-        return text.strip()
+        clean = text.strip()
+        # Remove common LLM preambles, we'll add our own consistent label in the UI payload
+        import re
+        clean = re.sub(r"^\s*(here(?:'s| is)\b[^:\n]*:\s*)", "", clean, flags=re.IGNORECASE)
+        clean = re.sub(r"^\s*(summary|overview)\s*:\s*", "", clean, flags=re.IGNORECASE)
+        return clean
     except Exception as e:
         return f"Summary unavailable: {e}"
 
@@ -347,11 +352,12 @@ async def ws_chat(websocket: WebSocket):
                     "status": "running",
                     "icon": "robot",
                 })
-                summary = await _summarize_results(question, normalized_spl, results_list)
+                summary_body = await _summarize_results(question, normalized_spl, results_list)
+                formatted_summary = f"Result Summary: {summary_body}" if summary_body else "Result Summary: (no rows)"
                 await websocket.send_json({
                     "type": "activity",
                     "title": "Summary ready",
-                    "detail": summary[:180] + ("…" if len(summary) > 180 else ""),
+                    "detail": formatted_summary[:180] + ("…" if len(formatted_summary) > 180 else ""),
                     "status": "done",
                     "icon": "check",
                 })
@@ -362,7 +368,7 @@ async def ws_chat(websocket: WebSocket):
                     "spl": normalized_spl,
                     "count": count,
                     "results": results_list[:50],  # cap to keep payload small
-                    "summary": summary,
+                    "summary": formatted_summary,
                 })
             except AuthenticationError as e:
                 await websocket.send_json({
