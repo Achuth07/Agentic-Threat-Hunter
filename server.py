@@ -259,43 +259,50 @@ def _route_tool(question: str) -> str:
     Apply a fast heuristic first; if inconclusive, fall back to an LLM router.
     """
     q = (question or "").lower()
+    # First: Splunk indicators should take precedence over generic endpoint words
+    splunk_indicators = ["eventid", "eventcode", "sourcetype", "index=", "tstats", "mstats", "search ", "dashboard", "siem"]
+    if any(k in q for k in splunk_indicators):
+        return "execute_splunk_search"
+
     # Heuristic: endpoint/DFIR intents => Velociraptor
     velo_keywords = [
         # Process and runtime artifacts
-        "process", "pslist", "tasklist", "services running", "list running",
+        "pslist", "tasklist", "services running", "list running", "listening ports", "netstat",
         # DFIR keywords
         "prefetch", "mft", "registry", "autoruns", "dfir", "endpoint", "memory",
         # System/computer info intents
         "computer info", "system info", "about this computer", "device info", "host info", "os version",
         # Local users/accounts intents
-        "local users", "local user accounts", "users", "user accounts", "accounts",
+        "local users", "local user accounts", "users()", "user accounts",
+        # Generic but endpoint-scoped
+        "process list", "processes on", "on this machine", "on host",
     ]
     if any(k in q for k in velo_keywords):
         return "run_velociraptor_query"
-
-    # If user explicitly mentions EventID, sourcetype, index, tstats, mstats => Splunk
-    splunk_indicators = ["eventid", "sourcetype", "index=", "tstats", "mstats", "search "]
-    if any(k in q for k in splunk_indicators):
-        return "execute_splunk_search"
 
     # Fallback to LLM router with stronger guidance and examples
     router_prompt = ChatPromptTemplate.from_messages([
         (
             "system",
             """
-You are a tool router. Choose exactly one tool for the user's request.
-Tools:
-- execute_splunk_search: Broad log analysis, SIEM queries, event-based searches, dashboards.
-- run_velociraptor_query: Endpoint forensics and live state (process list, files, registry, memory, autoruns, prefetch).
+You are a strict Tool Router. Select exactly ONE tool that best fits the user's request.
 
-Routing rules:
-- If user asks to list processes, running tasks, services, or mentions pslist/tasklist, choose run_velociraptor_query.
-- If user mentions a specific hostname/computer to inspect (e.g., "on achuthdell"), prefer run_velociraptor_query.
-- If user asks about basic computer/system information, choose run_velociraptor_query.
-- If user asks about local users or user accounts on the machine, choose run_velociraptor_query.
-- If user asks about EventID, sourcetype, dashboards, or SIEM analytics, choose execute_splunk_search.
+Tools (choose one):
+- execute_splunk_search
+    Purpose: SIEM/log analytics over historical events across many hosts. Works with Splunk fields like EventCode, sourcetype, index, tstats/mstats, datamodels. Use when the user wants logs, counts, trends, dashboards, searches over time.
 
-Output EXACTLY one token: execute_splunk_search OR run_velociraptor_query.
+- run_velociraptor_query
+    Purpose: Live endpoint forensics and local system state on a machine. Use for listing processes (pslist), services, network connections (netstat), local users (users()), basic system info (info()), filesystem metadata (stat, glob), prefetch, registry, autoruns, memory artifacts.
+
+Routing rules (decide with certainty):
+1) If the request is about the current state of a computer/endpoint (processes, services, listening ports, local users, basic system/computer info, prefetch, registry, files on disk) -> run_velociraptor_query.
+2) If the request mentions Windows Event IDs, EventCode, sourcetype, index=, dashboards, SIEM analytics, authentication/logon events, trends over time, or searching logs -> execute_splunk_search. NEVER use run_velociraptor_query for logon/authentication events.
+3) If the user says "on host/computer X" or "on this machine" and wants system state -> run_velociraptor_query (Velociraptor runs on an endpoint).
+4) If the user says "in Splunk", "SPL", or includes SPL-like tokens (index=, tstats, mstats) -> execute_splunk_search.
+
+Output format:
+- Return EXACTLY one token: execute_splunk_search OR run_velociraptor_query
+- No extra words, punctuation, or quotes.
 
 Examples:
 User: list running processes on achuthdell
@@ -309,6 +316,15 @@ You: run_velociraptor_query
 
 User: show me all the local user accounts
 You: run_velociraptor_query
+
+User: search for EventID 4688 process creations in the last day
+You: execute_splunk_search
+
+User: show active listening ports
+You: run_velociraptor_query
+
+User: count 4625 failed logons by user over the past day
+You: execute_splunk_search
 """,
         ),
         ("human", "{q}"),

@@ -19,12 +19,22 @@ def build_router_node(model_name: str):
         (
             "system",
             """
-You are a tool router. Decide which single tool is best for answering the user's question.
-Tools:
-- execute_splunk_search: Use this for broad SIEM log analysis, trends, alerts, time-windowed log queries.
-- run_velociraptor_query: Use this for deep endpoint forensics and local machine state (e.g., list processes, files, registry).
+You are a strict Tool Router. Choose exactly ONE tool.
 
-Output EXACTLY one token: execute_splunk_search OR run_velociraptor_query. No punctuation. No extra words.
+Tools (choose one):
+- execute_splunk_search
+  Purpose: SIEM/log analytics across historical events. Use for EventID/sourcetype/index queries, dashboards, tstats/mstats, trends over time.
+
+- run_velociraptor_query
+  Purpose: Live endpoint forensics and local system state. Use for processes (pslist), services, netstat, users(), info(), filesystem stat/glob, prefetch, registry, autoruns, memory artifacts.
+
+Routing rules:
+1) Endpoint/system state (processes, listening ports, basic computer info, local users, files, prefetch, registry) -> run_velociraptor_query.
+2) Logs/SIEM analytics (EventID, sourcetype, index=, SPL, dashboards, trends) -> execute_splunk_search.
+3) Mentions "on host/computer X" for current state -> run_velociraptor_query.
+4) Mentions "in Splunk" or uses SPL tokens (index=, tstats, mstats) -> execute_splunk_search.
+
+Output format: EXACTLY one of execute_splunk_search OR run_velociraptor_query (no punctuation or extra words).
 """,
         ),
         ("human", "{question}"),
