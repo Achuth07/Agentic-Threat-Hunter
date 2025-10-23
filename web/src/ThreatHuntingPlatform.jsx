@@ -261,27 +261,45 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
             <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4 lg:p-6 mb-6">
               <div className="flex items-center justify-between mb-3 lg:mb-4">
                 <div>
-                  <h3 className="text-sm lg:text-base font-semibold">Total Visitors</h3>
+                  <h3 className="text-sm lg:text-base font-semibold">Total Alerts</h3>
                   <p className="text-xs text-neutral-500">Total for the selected range</p>
                 </div>
               </div>
-              <div className="w-full h-56 lg:h-64">
-                <svg viewBox="0 0 600 240" className="w-full h-full">
+              <div className="w-full h-72 lg:h-80">
+                <svg viewBox="0 0 600 240" className="w-full h-full" style={{ maxWidth: '100%' }}>
                   <defs>
                     <linearGradient id="gradBrand" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="rgba(34,197,94,0.35)" />
+                      <stop offset="0%" stopColor="rgba(34,197,94,0.5)" />
                       <stop offset="100%" stopColor="rgba(34,197,94,0.05)" />
                     </linearGradient>
+                    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+                      <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="#22c55e" floodOpacity="0.10" />
+                    </filter>
                   </defs>
-                  <path d="M0,120 C60,40 120,20 180,80 C240,140 300,180 360,150 C420,120 480,60 540,120 L540,240 L0,240 Z" fill="url(#gradBrand)" stroke="none" />
-                  <path d="M0,140 C60,100 120,80 180,100 C240,120 300,160 360,140 C420,120 480,100 540,160" stroke="#22c55e" strokeWidth="2" fill="none" />
-                  <g fill="#555" fontSize="10">
-                    <text x="60" y="230">Jun 23</text>
-                    <text x="140" y="230">Jun 24</text>
-                    <text x="220" y="230">Jun 25</text>
-                    <text x="300" y="230">Jun 26</text>
-                    <text x="380" y="230">Jun 27</text>
-                    <text x="470" y="230">Jun 28</text>
+                  {/* Smooth area under curve */}
+                  <path d="M0,200 C60,120 120,80 180,100 C240,140 300,60 360,90 C420,120 480,60 540,110 L600,110 L600,240 L0,240 Z" fill="url(#gradBrand)" filter="url(#shadow)" />
+                  {/* Smooth line */}
+                  <path d="M0,200 C60,120 120,80 180,100 C240,140 300,60 360,90 C420,120 480,60 540,110 L600,110" stroke="#22c55e" strokeWidth="3" fill="none" filter="url(#shadow)" />
+                  {/* Dots on data points */}
+                  <circle cx="0" cy="200" r="4" fill="#22c55e" />
+                  <circle cx="60" cy="120" r="4" fill="#22c55e" />
+                  <circle cx="120" cy="80" r="4" fill="#22c55e" />
+                  <circle cx="180" cy="100" r="4" fill="#22c55e" />
+                  <circle cx="240" cy="140" r="4" fill="#22c55e" />
+                  <circle cx="300" cy="60" r="4" fill="#22c55e" />
+                  <circle cx="360" cy="90" r="4" fill="#22c55e" />
+                  <circle cx="420" cy="120" r="4" fill="#22c55e" />
+                  <circle cx="480" cy="60" r="4" fill="#22c55e" />
+                  <circle cx="540" cy="110" r="4" fill="#22c55e" />
+                  <circle cx="600" cy="110" r="4" fill="#22c55e" />
+                  {/* X axis labels */}
+                  <g fill="#555" fontSize="11">
+                    <text x="0" y="230">Jun 23</text>
+                    <text x="120" y="230">Jun 24</text>
+                    <text x="240" y="230">Jun 25</text>
+                    <text x="360" y="230">Jun 26</text>
+                    <text x="480" y="230">Jun 27</text>
+                    <text x="600" y="230">Jun 28</text>
                   </g>
                 </svg>
               </div>

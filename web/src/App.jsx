@@ -12,7 +12,7 @@ function App() {
   useEffect(() => {
     // Connect to WebSocket
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.hostname}:8002/ws`
+    const wsUrl = `${protocol}//${window.location.hostname}:8005/ws`
     
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
