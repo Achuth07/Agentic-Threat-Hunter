@@ -7,6 +7,11 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
   const [activeView, setActiveView] = useState('chat');
   const [dashboardRange, setDashboardRange] = useState('3m'); // 3m | 30d | 7d
   const [inputMessage, setInputMessage] = useState('');
+  const [health, setHealth] = useState({
+    splunk: { connected: null, message: '' },
+    velociraptor: { connected: null, message: '', config: '', config_exists: null },
+    checking: false,
+  });
   const messagesEndRef = useRef(null);
   const didInitialScrollRef = useRef(false);
 
@@ -35,6 +40,27 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
     navigator.clipboard.writeText(text);
   };
 
+  const checkHealth = async (which) => {
+    try {
+      setHealth((prev) => ({ ...prev, checking: true }));
+      const targets = which ? [which] : ['splunk', 'velociraptor'];
+      for (const t of targets) {
+        const res = await fetch(`/health/${t}`);
+        const json = await res.json();
+        setHealth((prev) => ({ ...prev, [t]: json }));
+      }
+    } catch (e) {
+      console.error('Health check failed', e);
+    } finally {
+      setHealth((prev) => ({ ...prev, checking: false }));
+    }
+  };
+
+  useEffect(() => {
+    // Run initial health checks on mount
+    checkHealth();
+  }, []);
+
   const menuItems = [
     { id: 'dashboard', icon: TrendingUp, label: 'Dashboard' },
     { id: 'chat', icon: MessageSquare, label: 'AI Chat' },
@@ -44,7 +70,20 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
   ];
 
   const integrations = [
-    { name: 'Splunk', type: 'SIEM', status: isConnected ? 'connected' : 'disconnected', description: 'Security Information and Event Management' },
+    { 
+      name: 'Splunk', 
+      type: 'SIEM', 
+      status: health.splunk.connected === null ? 'unknown' : (health.splunk.connected ? 'connected' : 'disconnected'), 
+      description: health.splunk.message || 'Security Information and Event Management' 
+    },
+    {
+      name: 'Velociraptor',
+      type: 'EDR/DFIR',
+      status: health.velociraptor.connected === null ? 'unknown' : (health.velociraptor.connected ? 'connected' : 'disconnected'),
+      description: health.velociraptor.message || 'Endpoint forensics and live response',
+      config: health.velociraptor.config,
+      configExists: health.velociraptor.config_exists,
+    }
   ];
   const llmIntegration = { name: 'LLaMA3:8b via Ollama', status: isConnected ? 'connected' : 'disconnected' };
 
@@ -118,11 +157,19 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
             </div>
             <div className="px-4 pb-4">
               {integrations.map((int) => (
-                <div key={int.name} className="flex items-center gap-3 px-3 py-2.5 text-neutral-400 transition-colors">
-                  <div className="w-5 h-5 flex items-center justify-center">
-                    <div className={`w-2 h-2 rounded-full ${int.status === 'connected' ? 'bg-brand' : 'bg-red-500'}`}></div>
+                <div key={int.name} className="flex items-center justify-between px-3 py-2.5 text-neutral-400 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="w-5 h-5 flex items-center justify-center">
+                      <div className={`w-2 h-2 rounded-full ${int.status === 'connected' ? 'bg-brand' : int.status === 'unknown' ? 'bg-neutral-500' : 'bg-red-500'}`}></div>
+                    </div>
+                    <span className="text-sm font-medium">{int.name}</span>
                   </div>
-                  <span className="text-sm font-medium">{int.name}</span>
+                  <button
+                    onClick={() => checkHealth(int.name.toLowerCase())}
+                    className="text-[10px] px-2 py-1 rounded border border-neutral-800 hover:border-neutral-700 text-neutral-400 hover:text-white"
+                  >
+                    Check health
+                  </button>
                 </div>
               ))}
             </div>

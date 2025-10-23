@@ -10,6 +10,7 @@ from langchain_ollama import ChatOllama
 import splunklib.client as client
 import splunklib.results as results
 from splunklib.binding import HTTPError, AuthenticationError
+from tools.velociraptor_tool import run_velociraptor_query
 
 # Load env
 load_dotenv()
@@ -98,6 +99,70 @@ def _execute_splunk_search(spl_query: str):
     return search_results
 
 
+@app.get("/health/splunk")
+def health_splunk():
+    """Quick health check for Splunk connectivity and search execution."""
+    try:
+        # Try a trivial search; don't depend on specific index content.
+        q = f"search index={DEFAULT_INDEX} | head 1"
+        rows = _execute_splunk_search(q)
+        return {
+            "connected": True,
+            "rows": len(rows),
+            "message": "Splunk reachable and search executed",
+        }
+    except AuthenticationError as e:
+        return {
+            "connected": False,
+            "message": f"Authentication failed: {e}",
+        }
+    except Exception as e:
+        return {
+            "connected": False,
+            "message": str(e),
+        }
+
+
+@app.get("/health/velociraptor")
+def health_velociraptor():
+    """Quick health check for Velociraptor via a lightweight VQL."""
+    try:
+        cfg = os.getenv("VELOCIRAPTOR_CONFIG") or os.path.join(os.getcwd(), "api.config.yaml")
+        exists = os.path.isfile(cfg)
+        # Minimal query; LIMIT is accepted in VQL; if not, still likely returns quickly.
+        vql = "SELECT * FROM pslist() LIMIT 1"
+        raw = run_velociraptor_query(vql, config_path=cfg)
+        import json as _json
+        try:
+            data = _json.loads(raw)
+        except Exception:
+            return {
+                "connected": False,
+                "message": f"Non-JSON response from tool: {str(raw)[:200]}",
+                "config": cfg,
+                "config_exists": exists,
+            }
+        if isinstance(data, dict) and data.get("error"):
+            return {
+                "connected": False,
+                "message": f"{data.get('error')}: {data.get('message')}",
+                "config": cfg,
+                "config_exists": exists,
+            }
+        return {
+            "connected": True,
+            "rows": len(data) if isinstance(data, list) else 1,
+            "message": "Velociraptor reachable and query executed",
+            "config": cfg,
+            "config_exists": exists,
+        }
+    except Exception as e:
+        return {
+            "connected": False,
+            "message": str(e),
+        }
+
+
 async def _summarize_results(question: str, spl: str, rows: list[dict]) -> str:
     """Use the local LLM to summarize results into a short human-friendly paragraph."""
     try:
@@ -154,6 +219,45 @@ Examples:
         ),
         ("human", "{question}"),
     ])
+
+
+def _build_vql_prompt():
+    return ChatPromptTemplate.from_messages([
+        (
+            "system",
+            """You are a Velociraptor VQL assistant. Output only a single valid VQL statement. No explanations, code blocks, or backticks.
+Rules:
+- Prefer simple, self-contained queries.
+Examples:
+  - List processes: SELECT * FROM pslist();
+  - File metadata: SELECT * FROM stat(filename="C:/Windows/System32/calc.exe");
+  - Recent prefetch: SELECT * FROM prefetch();
+""",
+        ),
+        ("human", "{question}"),
+    ])
+
+
+def _route_tool(question: str) -> str:
+    """Choose between 'execute_splunk_search' and 'run_velociraptor_query' using an LLM router."""
+    router_prompt = ChatPromptTemplate.from_messages([
+        (
+            "system",
+            """
+You are a tool router. Choose exactly one tool for the user's request.
+Tools:
+- execute_splunk_search: Broad log analysis, SIEM queries, time-windowed SPL.
+- run_velociraptor_query: Local endpoint forensics (process list, files, registry, live state).
+
+Output EXACTLY one token: execute_splunk_search OR run_velociraptor_query.
+""",
+        ),
+        ("human", "{q}"),
+    ])
+    llm = ChatOllama(model=SUMMARY_MODEL)
+    msg = llm.invoke(router_prompt.format_messages(q=question))
+    choice = (getattr(msg, "content", str(msg)) or "").strip()
+    return choice if choice in {"execute_splunk_search", "run_velociraptor_query"} else "execute_splunk_search"
 
 
 def _apply_time_window_policy(question: str, spl: str):
@@ -219,7 +323,97 @@ async def ws_chat(websocket: WebSocket):
                 "icon": "search",
             })
 
-            # 2) Generate SPL with LLM
+            # 2) Route to best tool
+            tool_choice = _route_tool(question)
+            await websocket.send_json({
+                "type": "activity",
+                "title": "Tool selected",
+                "detail": tool_choice,
+                "status": "done",
+                "icon": "robot",
+            })
+
+            from starlette.concurrency import run_in_threadpool
+
+            if tool_choice == "run_velociraptor_query":
+                # Generate VQL
+                await websocket.send_json({
+                    "type": "activity",
+                    "title": "Generating VQL query",
+                    "detail": "Asking local LLM (Ollama)",
+                    "status": "running",
+                    "icon": "robot",
+                })
+                vql_llm = ChatOllama(model=SUMMARY_MODEL)
+                vql_prompt = _build_vql_prompt()
+                vql_msg = await run_in_threadpool(vql_llm.invoke, vql_prompt.format_messages(question=question))
+                vql_raw = getattr(vql_msg, "content", str(vql_msg))
+                vql_query = vql_raw.strip().strip("`\"")
+                await websocket.send_json({
+                    "type": "activity",
+                    "title": "VQL generated",
+                    "detail": vql_query,
+                    "status": "done",
+                    "icon": "code",
+                })
+
+                # Execute Velociraptor query
+                await websocket.send_json({
+                    "type": "activity",
+                    "title": "Executing Velociraptor query",
+                    "detail": "Querying endpoint via Velociraptor",
+                    "status": "running",
+                    "icon": "bolt",
+                })
+                try:
+                    raw = await run_in_threadpool(run_velociraptor_query, vql_query)
+                    try:
+                        results_list = json.loads(raw)
+                    except Exception:
+                        results_list = [{"raw": raw}]
+                    count = len(results_list) if isinstance(results_list, list) else 1
+                    await websocket.send_json({
+                        "type": "activity",
+                        "title": "Search completed",
+                        "detail": f"{count} rows returned",
+                        "status": "done",
+                        "icon": "check",
+                    })
+
+                    # Summarize
+                    await websocket.send_json({
+                        "type": "activity",
+                        "title": "Summarizing results",
+                        "detail": "Generating human-readable overview",
+                        "status": "running",
+                        "icon": "robot",
+                    })
+                    summary_body = await _summarize_results(question, vql_query, results_list if isinstance(results_list, list) else [])
+                    formatted_summary = f"Result Summary: {summary_body}" if summary_body else "Result Summary: (no rows)"
+                    await websocket.send_json({
+                        "type": "activity",
+                        "title": "Summary ready",
+                        "detail": formatted_summary[:180] + ("…" if len(formatted_summary) > 180 else ""),
+                        "status": "done",
+                        "icon": "check",
+                    })
+
+                    await websocket.send_json({
+                        "type": "final",
+                        "spl": None,
+                        "count": count,
+                        "results": results_list if isinstance(results_list, list) else [results_list],
+                        "summary": formatted_summary,
+                    })
+                except Exception as e:
+                    await websocket.send_json({
+                        "type": "error",
+                        "title": "Velociraptor error",
+                        "detail": str(e),
+                    })
+                continue
+
+            # 3) Splunk path: Generate SPL with LLM
             prompt = _build_prompt()
             llm = ChatOllama(model=OLLAMA_MODEL)
             messages = prompt.format_messages(question=question)
@@ -230,9 +424,6 @@ async def ws_chat(websocket: WebSocket):
                 "status": "running",
                 "icon": "robot",
             })
-            # ChatOllama.invoke is sync; run in thread to avoid blocking event loop.
-            from starlette.concurrency import run_in_threadpool
-
             ai_message = await run_in_threadpool(llm.invoke, messages)
             raw_spl = ai_message.content if hasattr(ai_message, "content") else str(ai_message)
 
@@ -325,7 +516,7 @@ async def ws_chat(websocket: WebSocket):
                 "icon": "code",
             })
 
-            # 3) Execute Splunk search
+            # 4) Execute Splunk search
             await websocket.send_json({
                 "type": "activity",
                 "title": "Executing Splunk search",
@@ -344,7 +535,7 @@ async def ws_chat(websocket: WebSocket):
                     "icon": "check",
                 })
 
-                # 4) Summarize
+                # 5) Summarize
                 await websocket.send_json({
                     "type": "activity",
                     "title": "Summarizing results",
@@ -362,7 +553,7 @@ async def ws_chat(websocket: WebSocket):
                     "icon": "check",
                 })
 
-                # 5) Send final payload
+                # 6) Send final payload
                 await websocket.send_json({
                     "type": "final",
                     "spl": normalized_spl,
