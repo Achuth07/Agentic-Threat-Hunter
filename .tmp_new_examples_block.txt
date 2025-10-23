@@ -1,0 +1,51 @@
+# Few-shot examples (chat-style)
+message user "list running processes"
+message assistant "SELECT Name, Pid, Exe FROM pslist()"
+
+message user "show all running process details"
+message assistant "SELECT * FROM pslist()"
+
+message user "list running processes on achuthdell"
+message assistant "SELECT Name, Pid, Exe FROM pslist()"
+
+message user "what is the basic information about this computer?"
+message assistant "SELECT * FROM info()"
+
+message user "show os version and hostname"
+message assistant "SELECT OS, Hostname FROM info()"
+
+message user "show me all the local user accounts"
+message assistant "SELECT * FROM users()"
+
+message user "list local users with SIDs"
+message assistant "SELECT Username, Sid FROM users()"
+
+message user "show active network connections"
+message assistant "SELECT LocalAddress, LocalPort, RemoteAddress, RemotePort, State, ProcessName FROM netstat()"
+
+message user "list processes with open listening ports"
+message assistant "SELECT ProcessName, LocalAddress, LocalPort, State FROM netstat() WHERE State = \"LISTEN\""
+
+message user "recent prefetch entries"
+message assistant "SELECT Executable, RunCount, LastRunTime FROM prefetch()"
+
+message user "find prefetch for chrome"
+message assistant "SELECT Executable, RunCount, LastRunTime FROM prefetch() WHERE Executable =~ \"chrome\""
+
+message user "stat the calc.exe binary"
+message assistant "SELECT * FROM stat(filename=\"C:/Windows/System32/calc.exe\")"
+
+message user "list all executables in System32"
+message assistant "SELECT Name, Size, Mtime FROM glob(globs=[\"C:/Windows/System32/*.exe\"])"
+
+message user "show top 5 processes by thread count"
+message assistant "SELECT Name, Pid, Threads FROM pslist() ORDER BY Threads DESC LIMIT 5"
+
+message user "list processes named notepad.exe"
+message assistant "SELECT Name, Pid, Exe FROM pslist() WHERE Name =~ \"notepad.exe\""
+
+message user "list processes on host=workstation123"
+message assistant "SELECT Name, Pid, Exe FROM pslist()"
+
+message user "processes with a hostname filter"
+message assistant "SELECT Name, Pid, Exe FROM pslist()"

@@ -199,6 +199,53 @@ DEFAULT_INDEX=my_index python server.py
 
 In the activity feed you’ll see entries when a policy is applied (e.g., “Index policy applied”, “Time window applied (mode=normalize/infer)”).
 
+### Dedicated VQL Model (Velociraptor)
+
+This project includes a specialized Ollama model for generating Velociraptor VQL only. It improves correctness for functions like pslist(), info(), users(), netstat(), prefetch(), stat(), and glob().
+
+- The Modelfile lives at `VelociraptorModelfile`.
+- Create the model locally (name: `velociraptor_hunter`).
+- The backend will use it automatically for VQL generation via the `VQL_MODEL` env var (defaults to `velociraptor_hunter`).
+
+Example:
+
+```bash
+# Build the model
+ollama create velociraptor_hunter -f VelociraptorModelfile
+
+# Optional: run a quick smoke test
+echo 'show me all the local user accounts' | ollama run velociraptor_hunter
+echo 'what is the basic information about this computer?' | ollama run velociraptor_hunter
+
+# Backend will pick this up by default; to override:
+VQL_MODEL=velociraptor_hunter python server.py
+```
+
+Notes:
+- The model outputs a single VQL statement with no code fences or extra text.
+- Quotes in strings are unescaped (e.g., `WHERE Name =~ "notepad.exe"` will appear as `WHERE Name =~ "notepad.exe"`).
+
+### Dedicated SPL Model (Splunk)
+
+This project also includes a Modelfile tailored for SPL generation.
+
+- The Splunk Modelfile lives at `SplunkModelfile` (renamed from `Modelfile` to avoid confusion).
+- Create the model locally (name suggestion: `splunk_hunter`).
+- The backend uses `OLLAMA_MODEL` for SPL generation and defaults to `splunk_hunter`.
+
+Example:
+
+```bash
+# Build the Splunk model
+ollama create splunk_hunter -f SplunkModelfile
+
+# Optional: run a quick smoke test
+echo 'failed logons in last day' | ollama run splunk_hunter
+
+# Backend will pick this up by default; to override:
+OLLAMA_MODEL=splunk_hunter python server.py
+```
+
 ## Roadmap
 
 This project is in active development. The next steps are:

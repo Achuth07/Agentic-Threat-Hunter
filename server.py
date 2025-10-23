@@ -26,6 +26,8 @@ SPLUNK_PASSWORD = os.getenv("SPLUNK_PASSWORD")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "splunk_hunter")
 # SUMMARY_MODEL is used for human-friendly summaries. Default to a fluent base model.
 SUMMARY_MODEL = os.getenv("SUMMARY_MODEL", "llama3:8b")
+# VQL_MODEL is used for Velociraptor VQL generation.
+VQL_MODEL = os.getenv("VQL_MODEL", "velociraptor_hunter")
 # Default index policy
 DEFAULT_INDEX = os.getenv("DEFAULT_INDEX", "main")
 # Time policy mode: off | normalize | infer
@@ -401,7 +403,7 @@ async def ws_chat(websocket: WebSocket):
                     "status": "running",
                     "icon": "robot",
                 })
-                vql_llm = ChatOllama(model=SUMMARY_MODEL)
+                vql_llm = ChatOllama(model=VQL_MODEL)
                 vql_prompt = _build_vql_prompt()
                 vql_msg = await run_in_threadpool(vql_llm.invoke, vql_prompt.format_messages(question=question))
                 vql_raw = getattr(vql_msg, "content", str(vql_msg))
