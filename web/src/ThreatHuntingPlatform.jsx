@@ -527,7 +527,9 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
               <div className="mb-4 lg:mb-5">
                 <h3 className="text-sm lg:text-base font-semibold mb-1">Raw Search Results</h3>
                 <p className="text-xs text-neutral-500">
-                  {searchResults && searchResults.results ? `${searchResults.results.length} events from Splunk` : 'Waiting for search results'}
+                  {searchResults && searchResults.results 
+                    ? `${searchResults.results.length} ${searchResults.source === 'velociraptor' ? 'rows from Velociraptor' : 'events from Splunk'}` 
+                    : 'Waiting for search results'}
                 </p>
               </div>
               
@@ -538,9 +540,11 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                       <div className="bg-neutral-900 px-4 lg:px-5 py-3 border-b border-neutral-800 flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <span className="text-xs font-semibold text-brand bg-brand/10 px-2 py-1 rounded">
-                            Splunk
+                            {searchResults.source === 'velociraptor' ? 'Velociraptor' : 'Splunk'}
                           </span>
-                          <span className="text-xs text-neutral-500">Event {idx + 1}</span>
+                          <span className="text-xs text-neutral-500">
+                            {searchResults.source === 'velociraptor' ? `Row ${idx + 1}` : `Event ${idx + 1}`}
+                          </span>
                         </div>
                         <button 
                           onClick={() => copyToClipboard(JSON.stringify(result, null, 2))}

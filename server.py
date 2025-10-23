@@ -233,12 +233,19 @@ def _build_vql_prompt():
             """You are a Velociraptor VQL assistant. Output only a single valid VQL statement. No explanations, code blocks, or backticks.
 Rules:
 - Prefer simple, self-contained queries.
-- If the user asks to list running processes, use pslist().
-- If a hostname/computer is mentioned, still return a single pslist() query (server will target the configured client).
+- pslist() takes NO parameters. Never use pslist(hostname=...) or similar.
+- For process listing, prefer: SELECT Name, Pid, Exe FROM pslist() (unless user asks for full details, then use SELECT *).
+- Velociraptor executes queries on the endpoint configured in the API config; hostnames mentioned in the question are for context only.
+- Do NOT pass hostname or any parameter to pslist().
+ - If the user asks for basic information about the computer/system/host, use: SELECT * FROM info().
+ - If the user asks for local users/accounts on the machine, use: SELECT * FROM users().
 Examples:
-  - List processes: SELECT * FROM pslist();
-  - File metadata: SELECT * FROM stat(filename="C:/Windows/System32/calc.exe");
-  - Recent prefetch: SELECT * FROM prefetch();
+  - List processes: SELECT Name, Pid, Exe FROM pslist()
+  - List all process details: SELECT * FROM pslist()
+    - Basic system info: SELECT * FROM info()
+    - Local user accounts: SELECT * FROM users()
+  - File metadata: SELECT * FROM stat(filename="C:/Windows/System32/calc.exe")
+  - Recent prefetch: SELECT * FROM prefetch()
 """,
         ),
         ("human", "{question}"),
@@ -252,8 +259,14 @@ def _route_tool(question: str) -> str:
     q = (question or "").lower()
     # Heuristic: endpoint/DFIR intents => Velociraptor
     velo_keywords = [
-        "process", "pslist", "tasklist", "prefetch", "mft", "registry", "autoruns",
-        "dfir", "endpoint", "memory", "services running", "list running",
+        # Process and runtime artifacts
+        "process", "pslist", "tasklist", "services running", "list running",
+        # DFIR keywords
+        "prefetch", "mft", "registry", "autoruns", "dfir", "endpoint", "memory",
+        # System/computer info intents
+        "computer info", "system info", "about this computer", "device info", "host info", "os version",
+        # Local users/accounts intents
+        "local users", "local user accounts", "users", "user accounts", "accounts",
     ]
     if any(k in q for k in velo_keywords):
         return "run_velociraptor_query"
@@ -276,6 +289,8 @@ Tools:
 Routing rules:
 - If user asks to list processes, running tasks, services, or mentions pslist/tasklist, choose run_velociraptor_query.
 - If user mentions a specific hostname/computer to inspect (e.g., "on achuthdell"), prefer run_velociraptor_query.
+- If user asks about basic computer/system information, choose run_velociraptor_query.
+- If user asks about local users or user accounts on the machine, choose run_velociraptor_query.
 - If user asks about EventID, sourcetype, dashboards, or SIEM analytics, choose execute_splunk_search.
 
 Output EXACTLY one token: execute_splunk_search OR run_velociraptor_query.
@@ -286,6 +301,12 @@ You: run_velociraptor_query
 
 User: failed logons in last 24 hours
 You: execute_splunk_search
+
+User: what is the basic information about this computer?
+You: run_velociraptor_query
+
+User: show me all the local user accounts
+You: run_velociraptor_query
 """,
         ),
         ("human", "{q}"),
@@ -436,7 +457,9 @@ async def ws_chat(websocket: WebSocket):
 
                     await websocket.send_json({
                         "type": "final",
+                        "source": "velociraptor",
                         "spl": None,
+                        "vql": vql_query,
                         "count": count,
                         "results": results_list if isinstance(results_list, list) else [results_list],
                         "summary": formatted_summary,
@@ -592,6 +615,7 @@ async def ws_chat(websocket: WebSocket):
                 # 6) Send final payload
                 await websocket.send_json({
                     "type": "final",
+                    "source": "splunk",
                     "spl": normalized_spl,
                     "count": count,
                     "results": results_list[:50],  # cap to keep payload small

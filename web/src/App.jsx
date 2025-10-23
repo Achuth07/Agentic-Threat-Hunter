@@ -31,7 +31,7 @@ function App() {
         // so the spinner changes to a checkmark on the same line.
         const correlates = new Map([
           ['SPL generated', 'Generating SPL query'],
-          ['Search completed', 'Executing Splunk search'],
+          ['VQL generated', 'Generating VQL query'],
           ['Summary ready', 'Summarizing results'],
         ])
 
@@ -41,6 +41,35 @@ function App() {
           const status = data.status
           const title = data.title
           const detail = data.detail
+
+          // Special handling for "Search completed" - match either Splunk or Velociraptor
+          if (status === 'done' && title === 'Search completed') {
+            // Try to find either executing search activity
+            let targetIdx = updated.findIndex(a => a.id === 'Executing Splunk search')
+            if (targetIdx < 0) {
+              targetIdx = updated.findIndex(a => a.id === 'Executing Velociraptor query')
+            }
+            if (targetIdx >= 0) {
+              updated[targetIdx] = {
+                ...updated[targetIdx],
+                type: 'success',
+                status: 'done',
+                details: detail,
+                timestamp: new Date().toISOString(),
+              }
+              // Mark 'Analyzing question' as complete if present
+              const analyzingIdx = updated.findIndex(a => a.id === 'Analyzing question')
+              if (analyzingIdx >= 0 && updated[analyzingIdx].type === 'info') {
+                updated[analyzingIdx] = {
+                  ...updated[analyzingIdx],
+                  type: 'success',
+                  status: 'done',
+                  timestamp: new Date().toISOString(),
+                }
+              }
+              return updated
+            }
+          }
 
           // If this is a completion that maps to a running step, update the running step only
           if (status === 'done' && correlates.has(title)) {
@@ -106,12 +135,14 @@ function App() {
           return updated
         })
       } else if (data.type === 'final') {
-        // Final results with SPL, count, results, and summary
+        // Final results with SPL/VQL, count, results, summary, and source
         setSearchResults({
           summary: data.summary,
           results: data.results,
           spl: data.spl,
-          count: data.count
+          vql: data.vql,
+          count: data.count,
+          source: data.source || 'splunk' // default to splunk for backward compatibility
         })
         // Add assistant message with summary
         setMessages(prev => [...prev, { role: 'assistant', content: data.summary }])
