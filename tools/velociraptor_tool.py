@@ -48,66 +48,57 @@ def run_velociraptor_query(vql_query: str, config_path: Optional[str] = None) ->
             })
 
         try:
-            # pyvelociraptor API has changed over releases; try common entrypoints.
-            from pyvelociraptor import api_client as vapi  # type: ignore
+            from pyvelociraptor import LoadConfigFile
+            from pyvelociraptor.velo_pandas import DataFrameQuery
         except Exception as ie:
             return json.dumps({
                 "error": "pyvelociraptor_import",
                 "message": f"pyvelociraptor not installed or failed to import: {ie}",
             })
 
-        client = None
         try:
-            # Preferred: factory from config file
-            if hasattr(vapi, "VeloGrpcClient") and hasattr(vapi.VeloGrpcClient, "FromConfigFile"):
-                client = vapi.VeloGrpcClient.FromConfigFile(cfg)  # type: ignore[attr-defined]
-            elif hasattr(vapi, "from_config"):
-                client = vapi.from_config(cfg)  # type: ignore[attr-defined]
-            else:
-                return json.dumps({
-                    "error": "client_init_unavailable",
-                    "message": "pyvelociraptor API does not expose a known factory. Update package.",
-                })
+            # Load the configuration
+            config = LoadConfigFile(config_file=cfg)
         except Exception as e:
             return json.dumps({
-                "error": "client_init_failed",
-                "message": str(e),
+                "error": "config_load_failed",
+                "message": f"Failed to load Velociraptor config: {e}",
             })
 
         rows = []
         try:
-            # Execute query; normalize rows to dicts if possible
-            if hasattr(client, "Query"):
-                iterator = client.Query(vql_query)  # type: ignore[attr-defined]
-            elif hasattr(client, "query"):
-                iterator = client.query(vql_query)  # type: ignore[attr-defined]
+            # Execute query using DataFrameQuery
+            # It returns a dict with column names as keys and lists of values
+            result_dict = DataFrameQuery(vql_query, config=config, timeout=30)
+            
+            if not result_dict:
+                return json.dumps([])  # Empty result is valid
+            
+            # Convert the column-oriented dict to row-oriented list of dicts
+            # result_dict = {'col1': [val1, val2], 'col2': [val3, val4]}
+            # becomes rows = [{'col1': val1, 'col2': val3}, {'col1': val2, 'col2': val4}]
+            if isinstance(result_dict, dict):
+                # Get the length from the first column
+                if result_dict:
+                    first_key = next(iter(result_dict))
+                    num_rows = len(result_dict[first_key])
+                    
+                    for i in range(num_rows):
+                        row = {}
+                        for col_name, col_values in result_dict.items():
+                            row[col_name] = col_values[i]
+                        rows.append(row)
             else:
                 return json.dumps({
-                    "error": "query_method_missing",
-                    "message": "Client does not expose Query/query method.",
+                    "error": "unexpected_format",
+                    "message": f"DataFrameQuery returned unexpected type: {type(result_dict)}",
                 })
-
-            for row in iterator:
-                if isinstance(row, dict):
-                    rows.append(row)
-                else:
-                    try:
-                        rows.append(dict(row))
-                    except Exception:
-                        rows.append({"value": str(row)})
+            
         except Exception as qe:
             return json.dumps({
-                "error": "query_failed",
+                "error": "query_execution_failed",
                 "message": str(qe),
             })
-        finally:
-            try:
-                if hasattr(client, "Close"):
-                    client.Close()  # type: ignore[attr-defined]
-                elif hasattr(client, "close"):
-                    client.close()  # type: ignore[attr-defined]
-            except Exception:
-                pass
 
         return json.dumps(rows)
     except Exception as e:  # Last resort safeguard
