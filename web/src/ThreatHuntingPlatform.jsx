@@ -531,57 +531,117 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
 
             {/* Raw Search Results */}
             <div className="bg-black px-4 lg:px-8 py-4 lg:py-6">
-              <div className="mb-4 lg:mb-5">
-                <h3 className="text-sm lg:text-base font-semibold mb-1">Raw Search Results</h3>
-                <p className="text-xs text-neutral-500">
-                  {searchResults && searchResults.results 
-                    ? `${searchResults.results.length} ${
-                        searchResults.source === 'velociraptor' ? 'rows from Velociraptor' : 
-                        searchResults.source === 'virustotal' ? 'threat intel results from VirusTotal' :
-                        'events from Splunk'
-                      }` 
-                    : 'Waiting for search results'}
-                </p>
-              </div>
-              
-              {searchResults && searchResults.results && searchResults.results.length > 0 ? (
-                <div className="space-y-3 pb-6">
-                  {searchResults.results.map((result, idx) => (
-                    <div key={idx} className="bg-neutral-950 rounded-xl border border-neutral-800 overflow-hidden">
-                      <div className="bg-neutral-900 px-4 lg:px-5 py-3 border-b border-neutral-800 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs font-semibold text-brand bg-brand/10 px-2 py-1 rounded">
-                            {searchResults.source === 'velociraptor' ? 'Velociraptor' : 
-                             searchResults.source === 'virustotal' ? 'VirusTotal' :
-                             'Splunk'}
-                          </span>
-                          <span className="text-xs text-neutral-500">
-                            {searchResults.source === 'velociraptor' ? `Row ${idx + 1}` : 
-                             searchResults.source === 'virustotal' ? `IOC Report` :
-                             `Event ${idx + 1}`}
-                          </span>
+              {searchResults && searchResults.multi_hunt && searchResults.result_sections ? (
+                // Multi-hunt: render all three result sections
+                <div className="space-y-6">
+                  {searchResults.result_sections.map((section, sectionIdx) => (
+                    <div key={sectionIdx} className="space-y-4">
+                      <div className="mb-4 lg:mb-5">
+                        <h3 className="text-sm lg:text-base font-semibold mb-1">{section.title}</h3>
+                        <p className="text-xs text-neutral-500">
+                          {section.count} {section.source === 'virustotal' ? 'IOC report' : 
+                           section.source === 'velociraptor' ? 'connection(s)' : 'event(s)'}
+                        </p>
+                      </div>
+                      
+                      {section.results && section.results.length > 0 ? (
+                        <div className="space-y-3">
+                          {section.results.map((result, idx) => (
+                            <div key={idx} className="bg-neutral-950 rounded-xl border border-neutral-800 overflow-hidden">
+                              <div className="bg-neutral-900 px-4 lg:px-5 py-3 border-b border-neutral-800 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-xs font-semibold text-brand bg-brand/10 px-2 py-1 rounded">
+                                    {section.source === 'velociraptor' ? 'Velociraptor' : 
+                                     section.source === 'virustotal' ? 'VirusTotal' :
+                                     'Splunk'}
+                                  </span>
+                                  <span className="text-xs text-neutral-500">
+                                    {section.source === 'velociraptor' ? `Connection ${idx + 1}` : 
+                                     section.source === 'virustotal' ? `IOC Report` :
+                                     `Event ${idx + 1}`}
+                                  </span>
+                                </div>
+                                <button 
+                                  onClick={() => copyToClipboard(JSON.stringify(result, null, 2))}
+                                  className="text-xs text-neutral-400 hover:text-white transition-colors flex items-center gap-1"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                  <span className="hidden sm:inline">Copy JSON</span>
+                                </button>
+                              </div>
+                              <div className="p-4 lg:p-5">
+                                <pre className="text-xs text-neutral-300 overflow-x-auto font-mono">
+                                  {JSON.stringify(result, null, 2)}
+                                </pre>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                        <button 
-                          onClick={() => copyToClipboard(JSON.stringify(result, null, 2))}
-                          className="text-xs text-neutral-400 hover:text-white transition-colors flex items-center gap-1"
-                        >
-                          <Copy className="w-3 h-3" />
-                          <span className="hidden sm:inline">Copy JSON</span>
-                        </button>
-                      </div>
-                      <div className="p-4 lg:p-5">
-                        <pre className="text-xs text-neutral-300 overflow-x-auto font-mono">
-                          {JSON.stringify(result, null, 2)}
-                        </pre>
-                      </div>
+                      ) : (
+                        <div className="bg-neutral-950 rounded-xl border border-neutral-800 p-8 text-center">
+                          <Search className="w-12 h-12 text-neutral-600 mx-auto mb-4" />
+                          <p className="text-neutral-500 text-sm">No results for {section.title}</p>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="bg-neutral-950 rounded-xl border border-neutral-800 p-8 text-center mb-6">
-                  <Search className="w-12 h-12 text-neutral-600 mx-auto mb-4" />
-                  <p className="text-neutral-500 text-sm">No raw events yet. Results will appear here after a search.</p>
-                </div>
+                // Single hunt: render single result set
+                <>
+                  <div className="mb-4 lg:mb-5">
+                    <h3 className="text-sm lg:text-base font-semibold mb-1">Raw Search Results</h3>
+                    <p className="text-xs text-neutral-500">
+                      {searchResults && searchResults.results 
+                        ? `${searchResults.results.length} ${
+                            searchResults.source === 'velociraptor' ? 'rows from Velociraptor' : 
+                            searchResults.source === 'virustotal' ? 'threat intel results from VirusTotal' :
+                            'events from Splunk'
+                          }` 
+                        : 'Waiting for search results'}
+                    </p>
+                  </div>
+                  
+                  {searchResults && searchResults.results && searchResults.results.length > 0 ? (
+                    <div className="space-y-3 pb-6">
+                      {searchResults.results.map((result, idx) => (
+                        <div key={idx} className="bg-neutral-950 rounded-xl border border-neutral-800 overflow-hidden">
+                          <div className="bg-neutral-900 px-4 lg:px-5 py-3 border-b border-neutral-800 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-semibold text-brand bg-brand/10 px-2 py-1 rounded">
+                                {searchResults.source === 'velociraptor' ? 'Velociraptor' : 
+                                 searchResults.source === 'virustotal' ? 'VirusTotal' :
+                                 'Splunk'}
+                              </span>
+                              <span className="text-xs text-neutral-500">
+                                {searchResults.source === 'velociraptor' ? `Row ${idx + 1}` : 
+                                 searchResults.source === 'virustotal' ? `IOC Report` :
+                                 `Event ${idx + 1}`}
+                              </span>
+                            </div>
+                            <button 
+                              onClick={() => copyToClipboard(JSON.stringify(result, null, 2))}
+                              className="text-xs text-neutral-400 hover:text-white transition-colors flex items-center gap-1"
+                            >
+                              <Copy className="w-3 h-3" />
+                              <span className="hidden sm:inline">Copy JSON</span>
+                            </button>
+                          </div>
+                          <div className="p-4 lg:p-5">
+                            <pre className="text-xs text-neutral-300 overflow-x-auto font-mono">
+                              {JSON.stringify(result, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="bg-neutral-950 rounded-xl border border-neutral-800 p-8 text-center mb-6">
+                      <Search className="w-12 h-12 text-neutral-600 mx-auto mb-4" />
+                      <p className="text-neutral-500 text-sm">No raw events yet. Results will appear here after a search.</p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

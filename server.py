@@ -259,39 +259,43 @@ Examples:
 def _sanitize_vql(question: str, vql: str) -> str:
     """Remove disallowed host filters and parameters from VQL to keep queries portable.
     - Strip pslist(...) params to pslist()
-    - Remove simple WHERE Hostname=... / ComputerName=... clauses
+    - Remove WHERE predicates that constrain Hostname/ComputerName, regardless of operator (=, ==, LIKE, ILIKE, =~, IN)
+      and regardless of position in the predicate list. Preserve other conditions.
     """
     import re
     q = (vql or "").strip()
     # Normalize pslist arguments away
     q = re.sub(r"(?i)pslist\s*\([^)]*\)", "pslist()", q)
 
-    # Remove simple trailing WHERE Hostname=... or ComputerName=...
-    # Case-insensitive, supports single/double/no quotes
-    where_host_re = re.compile(
-        r"\s+WHERE\s+(?:Hostname|ComputerName)\s*=\s*(?:\"[^\"]*\"|'[^']*'|[A-Za-z0-9_\-]+)\s*;?$",
-        re.IGNORECASE,
-    )
-    q2 = where_host_re.sub("", q)
-    if q2 != q:
-        return q2.strip()
+    # If there's no WHERE, nothing more to sanitize
+    if re.search(r"(?i)\bWHERE\b", q) is None:
+        return q
 
-    # If condition appears with AND at end (rare), remove the Hostname condition and tidy trailing AND
-    q = re.sub(
-        r"\s+AND\s+(?:Hostname|ComputerName)\s*=\s*(?:\"[^\"]*\"|'[^']*'|[A-Za-z0-9_\-]+)\s*;?$",
-        "",
-        q,
-        flags=re.IGNORECASE,
-    ).strip()
-    # Also handle WHERE Hostname=... AND <other> (remove the Hostname=... and possible dangling AND)
-    q = re.sub(
-        r"\s+WHERE\s+(?:Hostname|ComputerName)\s*=\s*(?:\"[^\"]*\"|'[^']*'|[A-Za-z0-9_\-]+)\s+AND\s+",
-        " WHERE ",
-        q,
-        flags=re.IGNORECASE,
-    ).strip()
-    # Clean up possible trailing WHERE (if it became empty)
-    q = re.sub(r"\s+WHERE\s*;?$", "", q, flags=re.IGNORECASE).strip()
+    # Remove any Hostname/ComputerName predicate regardless of operator or quoting.
+    # Match the field name, operator, and value (which may be properly quoted, malformed, or unquoted)
+    # Value pattern: match either complete quoted strings OR any non-whitespace until space/AND/OR/semicolon/end
+    host_predicate = re.compile(
+        r"(?i)\b(Hostname|ComputerName)\s*(?:=|==|=~|LIKE|ILIKE|IN)\s*(?:\"[^\"]*\"|'[^']*'|[^\s;]+)",
+        re.IGNORECASE
+    )
+
+    # Apply repeatedly until no more host predicates remain
+    prev = None
+    while prev != q:
+        prev = q
+        q = host_predicate.sub("", q).strip()
+
+    # Tidy up dangling conjunctions and empty WHERE
+    # Remove leading AND/OR after WHERE
+    q = re.sub(r"(?i)\bWHERE\s+(?:AND|OR)\b", " WHERE ", q)
+    # Remove trailing AND/OR before end or semicolon
+    q = re.sub(r"(?i)\s+(?:AND|OR)\s*($|;)", r"\1", q)
+    # Remove AND/OR that now have nothing after them (between removal and next clause)
+    q = re.sub(r"(?i)\s+(?:AND|OR)\s+(?:AND|OR)\b", " AND ", q)
+    # Empty WHERE at end
+    q = re.sub(r"(?i)\bWHERE\s*($|;)", r"\1", q)
+    # Collapse multiple spaces
+    q = re.sub(r"\s{2,}", " ", q).strip()
     return q
 
 
@@ -315,9 +319,17 @@ def _route_tool(question: str) -> str:
         return "execute_splunk_search"
 
     # Heuristic: endpoint/DFIR intents => Velociraptor
+    # Check for process-related keywords first (highest priority for Velociraptor)
+    process_keywords = ["process", "processes", "running", "pslist", "tasklist", "pid", "executable"]
+    if any(k in q for k in process_keywords):
+        # Only route to Velociraptor if it's NOT about Splunk process events
+        if not any(splunk_word in q for splunk_word in ["eventid", "eventcode", "4688", "process creation", "sysmon"]):
+            return "run_velociraptor_query"
+    
+    # Other endpoint/DFIR keywords
     velo_keywords = [
-        # Process and runtime artifacts
-        "pslist", "tasklist", "services running", "list running", "listening ports", "netstat",
+        # Network and services
+        "services running", "listening ports", "netstat", "network connections", "open ports",
         # DFIR keywords
         "prefetch", "mft", "registry", "autoruns", "dfir", "endpoint", "memory",
         # System/computer info intents
@@ -325,7 +337,7 @@ def _route_tool(question: str) -> str:
         # Local users/accounts intents
         "local users", "local user accounts", "users()", "user accounts",
         # Generic but endpoint-scoped
-        "process list", "processes on", "on this machine", "on host",
+        "on this machine", "on host", "on the endpoint", "on the computer", "on the system",
     ]
     if any(k in q for k in velo_keywords):
         return "run_velociraptor_query"
@@ -348,11 +360,12 @@ Tools (choose one):
   Purpose: Threat intelligence and reputation lookups. Use when the user wants to check if an IP, file hash, or URL is malicious, query VirusTotal, or get IOC reputation.
 
 Routing rules (decide with certainty):
-1) If the request is about the current state of a computer/endpoint (processes, services, listening ports, local users, basic system/computer info, prefetch, registry, files on disk) -> run_velociraptor_query.
-2) If the request mentions Windows Event IDs, EventCode, sourcetype, index=, dashboards, SIEM analytics, authentication/logon events, trends over time, or searching logs -> execute_splunk_search. NEVER use run_velociraptor_query for logon/authentication events.
-3) If the user says "on host/computer X" or "on this machine" and wants system state -> run_velociraptor_query (Velociraptor runs on an endpoint).
-4) If the user says "in Splunk", "SPL", or includes SPL-like tokens (index=, tstats, mstats) -> execute_splunk_search.
-5) If the user asks to check if an IP/hash/URL is malicious, wants VirusTotal data, or mentions threat intel/IOC reputation -> check_virustotal.
+1) If the request mentions processes, running programs, process list, services, or executable files on a system -> run_velociraptor_query.
+2) If the request is about the current state of a computer/endpoint (network connections, listening ports, local users, basic system/computer info, prefetch, registry, files on disk) -> run_velociraptor_query.
+3) If the request mentions Windows Event IDs, EventCode, sourcetype, index=, dashboards, SIEM analytics, authentication/logon events, trends over time, or searching logs -> execute_splunk_search. NEVER use run_velociraptor_query for logon/authentication events.
+4) If the user says "on host/computer X", "on this machine", "on the endpoint", "on the system" and wants system state -> run_velociraptor_query (Velociraptor runs on an endpoint).
+5) If the user says "in Splunk", "SPL", or includes SPL-like tokens (index=, tstats, mstats) -> execute_splunk_search.
+6) If the user asks to check if an IP/hash/URL is malicious, wants VirusTotal data, or mentions threat intel/IOC reputation -> check_virustotal.
 
 Output format:
 - Return EXACTLY one token: execute_splunk_search OR run_velociraptor_query OR check_virustotal
@@ -360,6 +373,18 @@ Output format:
 
 Examples:
 User: list running processes on achuthdell
+You: run_velociraptor_query
+
+User: what processes are running on the machine
+You: run_velociraptor_query
+
+User: show me running processes
+You: run_velociraptor_query
+
+User: what programs are currently executing
+You: run_velociraptor_query
+
+User: list all running programs
 You: run_velociraptor_query
 
 User: failed logons in last 24 hours
@@ -595,17 +620,179 @@ async def ws_chat(websocket: WebSocket):
                         "status": "done",
                         "icon": "robot",
                     })
-                    
+
+                    # If the IOC is an IP and malicious, perform follow-on hunts
+                    proceed_hunt = vt_result.get("success") and vt_result.get("malicious", 0) > 0 and ioc_type == "ip"
+                    if not proceed_hunt:
+                        # Send VirusTotal-only final payload
+                        await websocket.send_json({
+                            "type": "final",
+                            "source": "virustotal",
+                            "spl": None,
+                            "vql": None,
+                            "ioc": ioc,
+                            "ioc_type": ioc_type,
+                            "count": 1,
+                            "results": [vt_result],
+                            "summary": formatted_summary,
+                        })
+                        continue
+
+                    # Begin threat hunt sequence
+                    await websocket.send_json({
+                        "type": "activity",
+                        "title": "Malicious verdict: starting threat hunt",
+                        "detail": f"IOC {ioc} flagged by VirusTotal; proceeding with endpoint and SIEM hunts",
+                        "status": "done",
+                        "icon": "alert",
+                    })
+
+                    # 1) Velociraptor: Check active connections to the IOC IP
+                    velo_vql = f'SELECT LocalAddress, LocalPort, RemoteAddress, State, Pid, Name FROM netstat() WHERE RemoteAddress = "{ioc}"'
+                    # Announce VQL (consistent with existing flow)
+                    await websocket.send_json({
+                        "type": "activity",
+                        "title": "VQL generated",
+                        "detail": velo_vql,
+                        "status": "done",
+                        "icon": "code",
+                    })
+                    # Execute Velociraptor query (use standard title to correlate "Search completed")
+                    await websocket.send_json({
+                        "type": "activity",
+                        "title": "Executing Velociraptor query",
+                        "detail": "Querying endpoint via Velociraptor",
+                        "status": "running",
+                        "icon": "bolt",
+                    })
+                    velo_results_list = []
+                    try:
+                        velo_raw = await run_in_threadpool(run_velociraptor_query, velo_vql)
+                        try:
+                            velo_results_list = json.loads(velo_raw)
+                        except Exception:
+                            velo_results_list = [{"raw": velo_raw}]
+                        await websocket.send_json({
+                            "type": "activity",
+                            "title": "Search completed",
+                            "detail": f"{len(velo_results_list) if isinstance(velo_results_list, list) else 1} rows returned",
+                            "status": "done",
+                            "icon": "check",
+                        })
+                    except Exception as e:
+                        await websocket.send_json({
+                            "type": "activity",
+                            "title": "Executing Velociraptor query",
+                            "detail": f"Error: {str(e)}",
+                            "status": "done",
+                            "icon": "x",
+                        })
+
+                    # 2) Splunk: Hunt for historical communication with the IOC IP
+                    spl_hunt = f'search index=* ("{ioc}") | stats earliest(_time) as first_seen, latest(_time) as last_seen, count by host, sourcetype | convert ctime(first_seen) ctime(last_seen)'
+                    # Announce SPL (consistent with existing flow)
+                    await websocket.send_json({
+                        "type": "activity",
+                        "title": "Final SPL query to Splunk",
+                        "detail": spl_hunt,
+                        "status": "done",
+                        "icon": "code",
+                    })
+                    await websocket.send_json({
+                        "type": "activity",
+                        "title": "Executing Splunk search",
+                        "detail": "Running query against Splunk",
+                        "status": "running",
+                        "icon": "bolt",
+                    })
+                    spl_results_list = []
+                    try:
+                        spl_results_list = await run_in_threadpool(_execute_splunk_search, spl_hunt)
+                        await websocket.send_json({
+                            "type": "activity",
+                            "title": "Search completed",
+                            "detail": f"{len(spl_results_list)} rows returned",
+                            "status": "done",
+                            "icon": "check",
+                        })
+                    except Exception as e:
+                        await websocket.send_json({
+                            "type": "activity",
+                            "title": "Executing Splunk search",
+                            "detail": f"Error: {str(e)}",
+                            "status": "done",
+                            "icon": "x",
+                        })
+
+                    # 3) Combine results into a final summary
+                    await websocket.send_json({
+                        "type": "activity",
+                        "title": "Combining results",
+                        "detail": "Producing a consolidated incident summary",
+                        "status": "running",
+                        "icon": "robot",
+                    })
+
+                    vt_mal = vt_result.get("malicious", 0)
+                    vt_total = vt_result.get("total", 0)
+                    velo_count = len(velo_results_list) if isinstance(velo_results_list, list) else 0
+                    spl_count = len(spl_results_list) if isinstance(spl_results_list, list) else 0
+
+                    # Derive a few quick facts from Splunk rows
+                    unique_hosts = set()
+                    unique_sourcetypes = set()
+                    for r in (spl_results_list or []):
+                        h = r.get("host") or r.get("result", {}).get("host")
+                        st = r.get("sourcetype") or r.get("result", {}).get("sourcetype")
+                        if h: unique_hosts.add(h)
+                        if st: unique_sourcetypes.add(st)
+
+                    combined_summary = (
+                        f"VirusTotal reports the IP {ioc} as malicious (" \
+                        f"{vt_mal}/{vt_total} vendors). " \
+                        f"Velociraptor shows {velo_count} active connection(s) to this IP on the endpoint. " \
+                        f"Splunk found {spl_count} historical event(s) across " \
+                        f"{len(unique_hosts)} host(s) and {len(unique_sourcetypes)} sourcetype(s)."
+                    )
+
+                    await websocket.send_json({
+                        "type": "activity",
+                        "title": "Combining results",
+                        "detail": combined_summary[:180] + ("…" if len(combined_summary) > 180 else ""),
+                        "status": "done",
+                        "icon": "check",
+                    })
+
+                    # Final combined payload: send all three result sets
                     await websocket.send_json({
                         "type": "final",
-                        "source": "virustotal",
-                        "spl": None,
-                        "vql": None,
+                        "source": "multi_hunt",
+                        "multi_hunt": True,
+                        "spl": spl_hunt,
+                        "vql": velo_vql,
                         "ioc": ioc,
                         "ioc_type": ioc_type,
-                        "count": 1,
-                        "results": [vt_result],
-                        "summary": formatted_summary,
+                        "summary": combined_summary,
+                        "result_sections": [
+                            {
+                                "source": "virustotal",
+                                "title": "VirusTotal IOC Report",
+                                "count": 1,
+                                "results": [vt_result],
+                            },
+                            {
+                                "source": "velociraptor",
+                                "title": "Active Connections (Velociraptor)",
+                                "count": velo_count,
+                                "results": velo_results_list[:50] if isinstance(velo_results_list, list) else [],
+                            },
+                            {
+                                "source": "splunk",
+                                "title": "Historical Communication (Splunk)",
+                                "count": spl_count,
+                                "results": spl_results_list[:50] if isinstance(spl_results_list, list) else [],
+                            },
+                        ],
                     })
                 except Exception as e:
                     await websocket.send_json({
@@ -628,9 +815,9 @@ async def ws_chat(websocket: WebSocket):
                 vql_prompt = _build_vql_prompt()
                 vql_msg = await run_in_threadpool(vql_llm.invoke, vql_prompt.format_messages(question=question))
                 vql_raw = getattr(vql_msg, "content", str(vql_msg))
-                vql_query = vql_raw.strip().strip("`\"")
+                original_vql = vql_raw.strip().strip("`\"")
                 # Sanitize away disallowed host filters/params
-                vql_query = _sanitize_vql(question, vql_query)
+                vql_query = _sanitize_vql(question, original_vql)
                 await websocket.send_json({
                     "type": "activity",
                     "title": "VQL generated",
@@ -638,6 +825,14 @@ async def ws_chat(websocket: WebSocket):
                     "status": "done",
                     "icon": "code",
                 })
+                if vql_query != original_vql:
+                    await websocket.send_json({
+                        "type": "activity",
+                        "title": "VQL sanitized",
+                        "detail": "Removed disallowed Hostname/ComputerName filters and pslist() params",
+                        "status": "done",
+                        "icon": "robot",
+                    })
 
                 # Execute Velociraptor query
                 await websocket.send_json({

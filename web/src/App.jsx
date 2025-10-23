@@ -143,7 +143,11 @@ function App() {
           spl: data.spl,
           vql: data.vql,
           count: data.count,
-          source: data.source || 'splunk' // default to splunk for backward compatibility
+          source: data.source || 'splunk', // default to splunk for backward compatibility
+          multi_hunt: data.multi_hunt || false,
+          result_sections: data.result_sections || null,
+          ioc: data.ioc,
+          ioc_type: data.ioc_type,
         })
         // Add assistant message with summary
         setMessages(prev => [...prev, { role: 'assistant', content: data.summary }])
