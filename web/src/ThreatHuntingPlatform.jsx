@@ -614,6 +614,22 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
         {/* Integrations View */}
         {activeView === 'integrations' && (
           <div className="flex-1 overflow-y-auto px-4 lg:px-8 py-4 lg:py-6">
+            <div className="max-w-4xl mx-auto flex items-center justify-between mb-4">
+              <div className="text-xs text-neutral-500">
+                {health.checking ? 'Checking integration health…' : 'View and refresh the status of your integrations.'}
+              </div>
+              <button
+                onClick={() => checkHealth()}
+                disabled={health.checking}
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                  health.checking
+                    ? 'border-neutral-800 text-neutral-600 cursor-not-allowed'
+                    : 'border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700'
+                }`}
+              >
+                {health.checking ? 'Checking…' : 'Refresh all'}
+              </button>
+            </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 max-w-4xl mx-auto">
               {integrations.map((platform) => (
                 <div key={platform.name} className="bg-neutral-950 rounded-2xl border border-neutral-800 p-4 lg:p-6 hover:border-neutral-700 transition-colors">
@@ -623,17 +639,55 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                       <p className="text-xs lg:text-sm text-neutral-400 line-clamp-2">{platform.description}</p>
                     </div>
                     <span className={`text-xs px-2 lg:px-3 py-1 lg:py-1.5 rounded-full font-medium whitespace-nowrap flex-shrink-0 ${
-                      platform.status === 'connected' 
-                        ? 'bg-brand/10 text-brand border border-brand/20' 
+                      platform.status === 'connected'
+                        ? 'bg-brand/10 text-brand border border-brand/20'
+                        : platform.status === 'unknown'
+                        ? 'bg-neutral-900 text-neutral-400 border border-neutral-700'
                         : 'bg-red-500/10 text-red-500 border border-red-500/20'
                     }`}>
                       {platform.status}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 lg:gap-3 pt-3 lg:pt-4 border-t border-neutral-800">
-                    <span className="text-xs text-neutral-500 bg-neutral-900 px-2 lg:px-3 py-1 lg:py-1.5 rounded-lg border border-neutral-800">
-                      {platform.type}
-                    </span>
+                  <div className="pt-3 lg:pt-4 border-t border-neutral-800 space-y-3">
+                    <div className="flex items-center gap-2 lg:gap-3">
+                      <span className="text-xs text-neutral-500 bg-neutral-900 px-2 lg:px-3 py-1 lg:py-1.5 rounded-lg border border-neutral-800">
+                        {platform.type}
+                      </span>
+                      <button
+                        onClick={() => checkHealth(platform.name.toLowerCase())}
+                        disabled={health.checking}
+                        className={`text-xs px-2 lg:px-3 py-1 lg:py-1.5 rounded-lg border transition-colors ${
+                          health.checking
+                            ? 'border-neutral-800 text-neutral-600 cursor-not-allowed'
+                            : 'border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700'
+                        }`}
+                      >
+                        {health.checking ? 'Checking…' : 'Check health'}
+                      </button>
+                    </div>
+
+                    {platform.name === 'Velociraptor' && (
+                      <div className="text-xs text-neutral-400 bg-black rounded-xl border border-neutral-800 p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-neutral-500">Config path</span>
+                          <span className="text-neutral-300 truncate max-w-[60%]" title={platform.config || 'Not set'}>
+                            {platform.config || 'Not set'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="text-neutral-500">Config exists</span>
+                          <span className={`${
+                            platform.configExists === true
+                              ? 'text-brand'
+                              : platform.configExists === false
+                              ? 'text-red-500'
+                              : 'text-neutral-400'
+                          }`}>
+                            {platform.configExists === true ? 'Yes' : platform.configExists === false ? 'No' : 'Unknown'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

@@ -131,7 +131,8 @@ def health_velociraptor():
         exists = os.path.isfile(cfg)
         # Minimal query; LIMIT is accepted in VQL; if not, still likely returns quickly.
         vql = "SELECT * FROM pslist() LIMIT 1"
-        raw = run_velociraptor_query(vql, config_path=cfg)
+        # Call the underlying function directly, not through the @tool wrapper
+        raw = run_velociraptor_query.func(vql, config_path=cfg)
         import json as _json
         try:
             data = _json.loads(raw)
@@ -157,9 +158,13 @@ def health_velociraptor():
             "config_exists": exists,
         }
     except Exception as e:
+        cfg_val = os.getenv("VELOCIRAPTOR_CONFIG") or os.path.join(os.getcwd(), "api.config.yaml")
+        exists_val = os.path.isfile(cfg_val)
         return {
             "connected": False,
             "message": str(e),
+            "config": cfg_val,
+            "config_exists": exists_val,
         }
 
 
