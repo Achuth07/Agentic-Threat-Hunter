@@ -80,7 +80,8 @@ function App() {
                 ...updated[targetIdx],
                 type: 'success',
                 status: 'done',
-                details: updated[targetIdx].details || detail,
+                // Prefer the newly provided detail (e.g., the generated SPL/VQL string)
+                details: (detail && String(detail).length > 0) ? detail : updated[targetIdx].details,
                 timestamp: new Date().toISOString(),
               }
             } else {

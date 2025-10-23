@@ -236,6 +236,7 @@ def _build_vql_prompt():
 Rules:
 - Prefer simple, self-contained queries.
 - pslist() takes NO parameters. Never use pslist(hostname=...) or similar.
+- Never include host-based filters like WHERE Hostname=... or WHERE ComputerName=.... Hostnames mentioned by the user are context only.
 - For process listing, prefer: SELECT Name, Pid, Exe FROM pslist() (unless user asks for full details, then use SELECT *).
 - Velociraptor executes queries on the endpoint configured in the API config; hostnames mentioned in the question are for context only.
 - Do NOT pass hostname or any parameter to pslist().
@@ -252,6 +253,45 @@ Examples:
         ),
         ("human", "{question}"),
     ])
+
+
+def _sanitize_vql(question: str, vql: str) -> str:
+    """Remove disallowed host filters and parameters from VQL to keep queries portable.
+    - Strip pslist(...) params to pslist()
+    - Remove simple WHERE Hostname=... / ComputerName=... clauses
+    """
+    import re
+    q = (vql or "").strip()
+    # Normalize pslist arguments away
+    q = re.sub(r"(?i)pslist\s*\([^)]*\)", "pslist()", q)
+
+    # Remove simple trailing WHERE Hostname=... or ComputerName=...
+    # Case-insensitive, supports single/double/no quotes
+    where_host_re = re.compile(
+        r"\s+WHERE\s+(?:Hostname|ComputerName)\s*=\s*(?:\"[^\"]*\"|'[^']*'|[A-Za-z0-9_\-]+)\s*;?$",
+        re.IGNORECASE,
+    )
+    q2 = where_host_re.sub("", q)
+    if q2 != q:
+        return q2.strip()
+
+    # If condition appears with AND at end (rare), remove the Hostname condition and tidy trailing AND
+    q = re.sub(
+        r"\s+AND\s+(?:Hostname|ComputerName)\s*=\s*(?:\"[^\"]*\"|'[^']*'|[A-Za-z0-9_\-]+)\s*;?$",
+        "",
+        q,
+        flags=re.IGNORECASE,
+    ).strip()
+    # Also handle WHERE Hostname=... AND <other> (remove the Hostname=... and possible dangling AND)
+    q = re.sub(
+        r"\s+WHERE\s+(?:Hostname|ComputerName)\s*=\s*(?:\"[^\"]*\"|'[^']*'|[A-Za-z0-9_\-]+)\s+AND\s+",
+        " WHERE ",
+        q,
+        flags=re.IGNORECASE,
+    ).strip()
+    # Clean up possible trailing WHERE (if it became empty)
+    q = re.sub(r"\s+WHERE\s*;?$", "", q, flags=re.IGNORECASE).strip()
+    return q
 
 
 def _route_tool(question: str) -> str:
@@ -424,6 +464,8 @@ async def ws_chat(websocket: WebSocket):
                 vql_msg = await run_in_threadpool(vql_llm.invoke, vql_prompt.format_messages(question=question))
                 vql_raw = getattr(vql_msg, "content", str(vql_msg))
                 vql_query = vql_raw.strip().strip("`\"")
+                # Sanitize away disallowed host filters/params
+                vql_query = _sanitize_vql(question, vql_query)
                 await websocket.send_json({
                     "type": "activity",
                     "title": "VQL generated",

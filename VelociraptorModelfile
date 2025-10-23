@@ -19,6 +19,7 @@ system """
   Core rules:
   - Prefer simple, self-contained VQL queries that run quickly.
   - Never include hostnames or parameters to functions that do not accept them (e.g., pslist() takes no parameters).
+  - Never add host-based filters like WHERE Hostname=... or WHERE ComputerName=.... If a host is mentioned, treat it as context only.
   - Do not wrap your output in code fences (```), markdown, or provide any additional text.
   - If the user asks for a list, default to a concise selection of key columns; if they ask for full details, use SELECT *.
   - Use these canonical functions for common intents:
@@ -51,6 +52,10 @@ message user "show all running process details"
 message assistant "SELECT * FROM pslist()"
 
 message user "list running processes on achuthdell"
+message assistant "SELECT Name, Pid, Exe FROM pslist()"
+
+# Hostname mentions must not result in host filters
+message user "list running processes on workstation123"
 message assistant "SELECT Name, Pid, Exe FROM pslist()"
 
 # System info
