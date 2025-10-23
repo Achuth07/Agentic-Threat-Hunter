@@ -11,6 +11,7 @@ import splunklib.client as client
 import splunklib.results as results
 from splunklib.binding import HTTPError, AuthenticationError
 from tools.velociraptor_tool import run_velociraptor_query
+from tools.virustotal_tool import check_virustotal
 
 # Load env
 load_dotenv()
@@ -295,10 +296,19 @@ def _sanitize_vql(question: str, vql: str) -> str:
 
 
 def _route_tool(question: str) -> str:
-    """Choose between 'execute_splunk_search' and 'run_velociraptor_query'.
+    """Choose between 'execute_splunk_search', 'run_velociraptor_query', and 'check_virustotal'.
     Apply a fast heuristic first; if inconclusive, fall back to an LLM router.
     """
     q = (question or "").lower()
+    
+    # First: VirusTotal indicators for threat intel / reputation checks
+    vt_keywords = [
+        "virustotal", "virus total", "vt", "malicious", "reputation", "threat intel",
+        "check hash", "check ip", "check url", "is this malicious", "ioc", "indicator of compromise"
+    ]
+    if any(k in q for k in vt_keywords):
+        return "check_virustotal"
+    
     # First: Splunk indicators should take precedence over generic endpoint words
     splunk_indicators = ["eventid", "eventcode", "sourcetype", "index=", "tstats", "mstats", "search ", "dashboard", "siem"]
     if any(k in q for k in splunk_indicators):
@@ -329,19 +339,23 @@ You are a strict Tool Router. Select exactly ONE tool that best fits the user's 
 
 Tools (choose one):
 - execute_splunk_search
-    Purpose: SIEM/log analytics over historical events across many hosts. Works with Splunk fields like EventCode, sourcetype, index, tstats/mstats, datamodels. Use when the user wants logs, counts, trends, dashboards, searches over time.
+  Purpose: SIEM/log analytics over historical events across many hosts. Works with Splunk fields like EventCode, sourcetype, index, tstats/mstats, datamodels. Use when the user wants logs, counts, trends, dashboards, searches over time.
 
 - run_velociraptor_query
-    Purpose: Live endpoint forensics and local system state on a machine. Use for listing processes (pslist), services, network connections (netstat), local users (users()), basic system info (info()), filesystem metadata (stat, glob), prefetch, registry, autoruns, memory artifacts.
+  Purpose: Live endpoint forensics and local system state on a machine. Use for listing processes (pslist), services, network connections (netstat), local users (users()), basic system info (info()), filesystem metadata (stat, glob), prefetch, registry, autoruns, memory artifacts.
+
+- check_virustotal
+  Purpose: Threat intelligence and reputation lookups. Use when the user wants to check if an IP, file hash, or URL is malicious, query VirusTotal, or get IOC reputation.
 
 Routing rules (decide with certainty):
 1) If the request is about the current state of a computer/endpoint (processes, services, listening ports, local users, basic system/computer info, prefetch, registry, files on disk) -> run_velociraptor_query.
 2) If the request mentions Windows Event IDs, EventCode, sourcetype, index=, dashboards, SIEM analytics, authentication/logon events, trends over time, or searching logs -> execute_splunk_search. NEVER use run_velociraptor_query for logon/authentication events.
 3) If the user says "on host/computer X" or "on this machine" and wants system state -> run_velociraptor_query (Velociraptor runs on an endpoint).
 4) If the user says "in Splunk", "SPL", or includes SPL-like tokens (index=, tstats, mstats) -> execute_splunk_search.
+5) If the user asks to check if an IP/hash/URL is malicious, wants VirusTotal data, or mentions threat intel/IOC reputation -> check_virustotal.
 
 Output format:
-- Return EXACTLY one token: execute_splunk_search OR run_velociraptor_query
+- Return EXACTLY one token: execute_splunk_search OR run_velociraptor_query OR check_virustotal
 - No extra words, punctuation, or quotes.
 
 Examples:
@@ -365,6 +379,12 @@ You: run_velociraptor_query
 
 User: count 4625 failed logons by user over the past day
 You: execute_splunk_search
+
+User: is this IP malicious? 8.8.8.8
+You: check_virustotal
+
+User: check hash 44d88612fea8a8f36de82e1278abb02f in virustotal
+You: check_virustotal
 """,
         ),
         ("human", "{q}"),
@@ -372,9 +392,7 @@ You: execute_splunk_search
     llm = ChatOllama(model=SUMMARY_MODEL)
     msg = llm.invoke(router_prompt.format_messages(q=question))
     choice = (getattr(msg, "content", str(msg)) or "").strip()
-    return choice if choice in {"execute_splunk_search", "run_velociraptor_query"} else "execute_splunk_search"
-
-
+    return choice if choice in {"execute_splunk_search", "run_velociraptor_query", "check_virustotal"} else "execute_splunk_search"
 def _apply_time_window_policy(question: str, spl: str):
     """Normalize/insert earliest/latest based on natural language like 'last 24 hours'.
     Returns (new_spl, reason_or_None). Conservative heuristic.
@@ -421,6 +439,37 @@ def _apply_time_window_policy(question: str, spl: str):
     return (s, reason) if reason else (s, None)
 
 
+@app.get("/health/virustotal")
+def health_virustotal():
+    """Quick health check for VirusTotal API key and connectivity."""
+    try:
+        api_key = os.getenv("VT_API_KEY")
+        if not api_key:
+            return {
+                "connected": False,
+                "message": "VT_API_KEY not set in environment",
+            }
+        # Try a simple known-good hash lookup (EICAR test file MD5)
+        test_hash = "44d88612fea8a8f36de82e1278abb02f"
+        result = check_virustotal(test_hash, ioc_type="hash", api_key=api_key)
+        if result.get("success"):
+            return {
+                "connected": True,
+                "message": "VirusTotal API key valid and reachable",
+                "test_ioc": test_hash,
+            }
+        else:
+            return {
+                "connected": False,
+                "message": f"VirusTotal API error: {result.get('error', 'Unknown')}",
+            }
+    except Exception as e:
+        return {
+            "connected": False,
+            "message": str(e),
+        }
+
+
 @app.websocket("/ws")
 async def ws_chat(websocket: WebSocket):
     await websocket.accept()
@@ -449,6 +498,122 @@ async def ws_chat(websocket: WebSocket):
             })
 
             from starlette.concurrency import run_in_threadpool
+
+            if tool_choice == "check_virustotal":
+                # Extract IOC from question using simple heuristics or LLM
+                await websocket.send_json({
+                    "type": "activity",
+                    "title": "Extracting IOC",
+                    "detail": "Identifying IP/hash/URL from question",
+                    "status": "running",
+                    "icon": "search",
+                })
+                
+                # Simple extraction: look for common patterns
+                import re
+                q = question
+                # IP pattern
+                ip_match = re.search(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", q)
+                # Hash pattern (MD5=32 hex, SHA1=40 hex, SHA256=64 hex)
+                hash_match = re.search(r"\b[a-fA-F0-9]{32}\b|\b[a-fA-F0-9]{40}\b|\b[a-fA-F0-9]{64}\b", q)
+                # URL pattern (http/https)
+                url_match = re.search(r"https?://[^\s]+", q)
+                
+                ioc = None
+                ioc_type = "hash"
+                if ip_match:
+                    ioc = ip_match.group(0)
+                    ioc_type = "ip"
+                elif url_match:
+                    ioc = url_match.group(0)
+                    ioc_type = "url"
+                elif hash_match:
+                    ioc = hash_match.group(0)
+                    ioc_type = "hash"
+                
+                if not ioc:
+                    await websocket.send_json({
+                        "type": "error",
+                        "title": "IOC extraction failed",
+                        "detail": "Could not identify IP, hash, or URL in question",
+                    })
+                    continue
+                
+                await websocket.send_json({
+                    "type": "activity",
+                    "title": "Extracting IOC",
+                    "detail": f"{ioc_type.upper()}: {ioc}",
+                    "status": "done",
+                    "icon": "search",
+                })
+                
+                # Query VirusTotal
+                await websocket.send_json({
+                    "type": "activity",
+                    "title": "Querying VirusTotal",
+                    "detail": f"Checking {ioc_type} reputation",
+                    "status": "running",
+                    "icon": "shield",
+                })
+                
+                try:
+                    vt_result = await run_in_threadpool(check_virustotal, ioc, ioc_type)
+                    await websocket.send_json({
+                        "type": "activity",
+                        "title": "Querying VirusTotal",
+                        "detail": f"{vt_result.get('malicious', 0)}/{vt_result.get('total', 0)} vendors flagged as malicious",
+                        "status": "done",
+                        "icon": "shield",
+                    })
+                    
+                    # Summarize
+                    await websocket.send_json({
+                        "type": "activity",
+                        "title": "Summarizing threat intel",
+                        "detail": "Generating human-readable overview",
+                        "status": "running",
+                        "icon": "robot",
+                    })
+                    
+                    if vt_result.get("success"):
+                        mal = vt_result.get("malicious", 0)
+                        total = vt_result.get("total", 0)
+                        if mal > 0:
+                            summary_body = f"The {ioc_type.upper()} {ioc} is flagged as malicious by {mal}/{total} vendors on VirusTotal."
+                        else:
+                            summary_body = f"The {ioc_type.upper()} {ioc} is clean (0/{total} vendors flagged it)."
+                        if vt_result.get("message"):
+                            summary_body += f" {vt_result['message']}"
+                    else:
+                        summary_body = f"VirusTotal lookup failed: {vt_result.get('error', 'Unknown error')}"
+                    
+                    formatted_summary = f"Threat Intel Summary: {summary_body}"
+                    await websocket.send_json({
+                        "type": "activity",
+                        "title": "Summarizing threat intel",
+                        "detail": formatted_summary[:180] + ("…" if len(formatted_summary) > 180 else ""),
+                        "status": "done",
+                        "icon": "robot",
+                    })
+                    
+                    await websocket.send_json({
+                        "type": "final",
+                        "source": "virustotal",
+                        "spl": None,
+                        "vql": None,
+                        "ioc": ioc,
+                        "ioc_type": ioc_type,
+                        "count": 1,
+                        "results": [vt_result],
+                        "summary": formatted_summary,
+                    })
+                except Exception as e:
+                    await websocket.send_json({
+                        "type": "error",
+                        "title": "VirusTotal error",
+                        "detail": str(e),
+                    })
+                continue
 
             if tool_choice == "run_velociraptor_query":
                 # Generate VQL

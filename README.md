@@ -40,9 +40,10 @@ The agent is built on a modular and resilient architecture:
 - **The Hunting Grounds**:
   - Splunk Enterprise (Free License) as the SIEM, integrated via the Splunk Python SDK.
   - Velociraptor for live endpoint forensics, integrated via `pyvelociraptor`.
-- **Tools**: Custom tools include a Splunk search executor and a Velociraptor VQL executor. More tools (threat intel, EDR) can be added.
+  - VirusTotal for threat intelligence and IOC reputation checks, integrated via REST API.
+- **Tools**: Custom tools include a Splunk search executor, a Velociraptor VQL executor, and a VirusTotal IOC checker.
 - **Multi-agent Graph (LangGraph)**: The agent is modeled as nodes:
-  - `tool_router` → decides the best tool (Splunk vs Velociraptor).
+  - `tool_router` → decides the best tool (Splunk / Velociraptor / VirusTotal).
   - `generate_query` → produces SPL or VQL based on the chosen tool.
   - `execute_tool` → runs the query and returns normalized results.
   - Strong, explicit router rules ensure correct selection.
@@ -57,10 +58,11 @@ Key capabilities currently working:
 
 - ✅ **Splunk Integration**: Execute SPL via Splunk SDK with guardrails (default index policy, time window normalization, backtick stripping, query normalization).
 - ✅ **Velociraptor Integration**: Execute VQL via `pyvelociraptor` using `LoadConfigFile` and `velo_pandas.DataFrameQuery`, returning normalized JSON row lists.
+- ✅ **VirusTotal Integration**: Check IOC reputation (IP/hash/URL) via VirusTotal v3 API; extract IOCs from questions and return malicious/total vendor counts.
 - ✅ **Dedicated Models**: Custom `splunk_hunter` (SPL) and `velociraptor_hunter` (VQL) models built with Modelfiles; the backend selects them via env vars.
-- ✅ **Router Node + Heuristics**: Strong decision matrix to route endpoint/system state requests to Velociraptor and log/SIEM analytics to Splunk.
-- ✅ **Web UI Enhancements**: Activity feed correlates steps; shows generated SPL/VQL inline; raw results labeled by source; integrations panel shows live health.
-- ✅ **Health Endpoints**: `/health/splunk` and `/health/velociraptor` for quick connectivity checks; surfaced in the UI.
+- ✅ **Router Node + Heuristics**: Strong decision matrix to route endpoint/system state to Velociraptor, log/SIEM analytics to Splunk, and threat intel to VirusTotal.
+- ✅ **Web UI Enhancements**: Activity feed correlates steps; shows generated SPL/VQL inline; raw results labeled by source (Splunk/Velociraptor/VirusTotal); integrations panel shows live health.
+- ✅ **Health Endpoints**: `/health/splunk`, `/health/velociraptor`, and `/health/virustotal` for quick connectivity checks; surfaced in the UI.
 
 ## Getting Started
 
@@ -199,6 +201,10 @@ Environment variables and guardrails:
   - Model used to summarize results for humans.
 - `VELOCIRAPTOR_CONFIG` (optional)
   - Path to the Velociraptor `api.config.yaml`. If not set, the server looks for `api.config.yaml` in the project root.
+- `VT_API_KEY` (optional, required for VirusTotal integration)
+  - Your VirusTotal API key for IOC reputation checks (IP/hash/URL).
+  - Obtain from: [VirusTotal API portal](https://www.virustotal.com/gui/my-apikey)
+  - If not set, VirusTotal queries will fail.
 
 Examples:
 
@@ -276,16 +282,79 @@ Backend exposes simple health checks that the UI surfaces in the Integrations pa
 
 - `GET /health/splunk` → checks Splunk connectivity by running a trivial search.
 - `GET /health/velociraptor` → runs a minimal VQL (`SELECT * FROM pslist() LIMIT 1`) using the configured Velociraptor API config.
+- `GET /health/virustotal` → validates the VirusTotal API key by querying the EICAR test file hash (`44d88612fea8a8f36de82e1278abb02f`). Returns `{"connected": true}` if successful.
 
 ### Tool Router Decision Matrix
 
 Routing is determined by a heuristic plus an LLM fallback with explicit rules:
 
-- Use Velociraptor for live endpoint/system state:
-  - Processes (pslist), services, listening ports (netstat), basic system info (info()), local users (users()), prefetch, registry, filesystem metadata (stat, glob), autoruns, memory artifacts.
-- Use Splunk for SIEM/log analytics:
-  - EventID/EventCode, `sourcetype`, `index=`, `tstats`/`mstats`, dashboards, authentication/logon events, trends over time, historical searches across many hosts.
-- If a hostname is mentioned for endpoint state, still choose Velociraptor (hostnames are context; no host filters are added to VQL).
+- **Use VirusTotal for threat intelligence and IOC reputation checks**:
+  - Keywords: "virustotal", "malicious", "reputation", "threat intel", "check hash", "check ip", "check url", "ioc", "indicators of compromise"
+  - Questions asking if an IP/hash/URL is malicious, clean, safe, or compromised
+  - Examples: "is this IP malicious? 8.8.8.8", "check hash 44d88612fea8a8f36de82e1278abb02f", "is this URL safe?"
+  - Returns: malicious/total vendor counts, permalink to VirusTotal report, detection stats
+
+- **Use Splunk for SIEM/log analytics**:
+  - EventID/EventCode, `sourcetype`, `index=`, `tstats`/`mstats`, dashboards, authentication/logon events, trends over time, historical searches across many hosts
+  - Keywords: "splunk", "logs", "events", "search", "statistics", "timechart", "stats", "table", "sourcetype", "index", "earliest", "latest"
+  - Examples: "show failed logins in the last 24 hours", "count events by sourcetype"
+
+- **Use Velociraptor for live endpoint/system state**:
+  - Processes (pslist), services, listening ports (netstat), basic system info (info()), local users (users()), prefetch, registry, filesystem metadata (stat, glob), autoruns, memory artifacts
+  - Keywords: "velociraptor", "endpoint", "system", "process", "registry", "file", "artifact", "vql"
+  - Examples: "list running processes", "show local user accounts", "what listening ports are open?"
+  - If a hostname is mentioned for endpoint state, still choose Velociraptor (hostnames are context; no host filters are added to VQL)
+
+**Priority order** (checked in this sequence):
+1. VirusTotal keywords/IOC checks → `check_virustotal`
+2. Splunk indicators (EventID, sourcetype, index, etc.) → `execute_splunk_search`
+3. Velociraptor keywords (pslist, info, etc.) → `run_velociraptor_query`
+4. LLM fallback with explicit three-tool rules if heuristics don't match
+
+### Usage Examples
+
+#### VirusTotal IOC Checks
+
+Ask the agent to check if an IP, hash, or URL is malicious:
+
+```
+"Is this IP malicious? 8.8.8.8"
+"Check hash 44d88612fea8a8f36de82e1278abb02f"
+"Is this URL safe? https://example.com"
+"What's the reputation of 1.2.3.4?"
+```
+
+The agent will:
+1. Extract the IOC (IP/hash/URL) from your question
+2. Query VirusTotal API v3
+3. Return a summary: "The IP 8.8.8.8 is flagged as malicious by X/Y vendors" or "is clean (0/Y vendors)"
+4. Display results in the UI with a VirusTotal badge and permalink to the full report
+
+Supported IOC types:
+- **IP addresses**: IPv4 format (e.g., 8.8.8.8, 192.168.1.1)
+- **File hashes**: MD5, SHA-1, SHA-256 (e.g., 44d88612fea8a8f36de82e1278abb02f)
+- **URLs**: Any valid URL (e.g., https://example.com)
+
+#### Splunk Queries
+
+Ask for log analytics and SIEM searches:
+
+```
+"Show failed logins in the last 24 hours"
+"Count events by sourcetype in the last 7 days"
+"Find EventCode 4625 (failed logon) from index=security"
+```
+
+#### Velociraptor Queries
+
+Ask for live endpoint state:
+
+```
+"List running processes"
+"Show local user accounts"
+"What listening ports are open?"
+"Get basic system information"
+```
 
 ## Roadmap
 

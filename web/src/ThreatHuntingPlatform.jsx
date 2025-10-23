@@ -10,6 +10,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
   const [health, setHealth] = useState({
     splunk: { connected: null, message: '' },
     velociraptor: { connected: null, message: '', config: '', config_exists: null },
+    virustotal: { connected: null, message: '' },
     checking: false,
   });
   const messagesEndRef = useRef(null);
@@ -43,7 +44,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
   const checkHealth = async (which) => {
     try {
       setHealth((prev) => ({ ...prev, checking: true }));
-      const targets = which ? [which] : ['splunk', 'velociraptor'];
+      const targets = which ? [which] : ['splunk', 'velociraptor', 'virustotal'];
       for (const t of targets) {
         const res = await fetch(`/health/${t}`);
         const json = await res.json();
@@ -83,6 +84,12 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
       description: health.velociraptor.message || 'Endpoint forensics and live response',
       config: health.velociraptor.config,
       configExists: health.velociraptor.config_exists,
+    },
+    {
+      name: 'VirusTotal',
+      type: 'Threat Intel',
+      status: health.virustotal.connected === null ? 'unknown' : (health.virustotal.connected ? 'connected' : 'disconnected'),
+      description: health.virustotal.message || 'IOC reputation and malware analysis',
     }
   ];
   const llmIntegration = { name: 'LLaMA3:8b via Ollama', status: isConnected ? 'connected' : 'disconnected' };
@@ -528,7 +535,11 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                 <h3 className="text-sm lg:text-base font-semibold mb-1">Raw Search Results</h3>
                 <p className="text-xs text-neutral-500">
                   {searchResults && searchResults.results 
-                    ? `${searchResults.results.length} ${searchResults.source === 'velociraptor' ? 'rows from Velociraptor' : 'events from Splunk'}` 
+                    ? `${searchResults.results.length} ${
+                        searchResults.source === 'velociraptor' ? 'rows from Velociraptor' : 
+                        searchResults.source === 'virustotal' ? 'threat intel results from VirusTotal' :
+                        'events from Splunk'
+                      }` 
                     : 'Waiting for search results'}
                 </p>
               </div>
@@ -540,10 +551,14 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                       <div className="bg-neutral-900 px-4 lg:px-5 py-3 border-b border-neutral-800 flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <span className="text-xs font-semibold text-brand bg-brand/10 px-2 py-1 rounded">
-                            {searchResults.source === 'velociraptor' ? 'Velociraptor' : 'Splunk'}
+                            {searchResults.source === 'velociraptor' ? 'Velociraptor' : 
+                             searchResults.source === 'virustotal' ? 'VirusTotal' :
+                             'Splunk'}
                           </span>
                           <span className="text-xs text-neutral-500">
-                            {searchResults.source === 'velociraptor' ? `Row ${idx + 1}` : `Event ${idx + 1}`}
+                            {searchResults.source === 'velociraptor' ? `Row ${idx + 1}` : 
+                             searchResults.source === 'virustotal' ? `IOC Report` :
+                             `Event ${idx + 1}`}
                           </span>
                         </div>
                         <button 
