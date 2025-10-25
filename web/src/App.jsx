@@ -7,6 +7,21 @@ function App() {
   const [activities, setActivities] = useState([])
   const [searchResults, setSearchResults] = useState(null)
   const [isConnected, setIsConnected] = useState(false)
+  const [settings, setSettings] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('ath_settings') || '{}')
+      return {
+        defaultIndex: saved.defaultIndex || 'main',
+        timePolicyMode: saved.timePolicyMode || 'normalize',
+        splModel: saved.splModel || 'splunk_hunter',
+        vqlModel: saved.vqlModel || 'velociraptor_hunter',
+        summaryModel: saved.summaryModel || 'llama3:8b',
+        rawResultLimit: typeof saved.rawResultLimit === 'number' ? saved.rawResultLimit : 50,
+      }
+    } catch {
+      return { defaultIndex: 'main', timePolicyMode: 'normalize', splModel: 'splunk_hunter', vqlModel: 'velociraptor_hunter', summaryModel: 'llama3:8b', rawResultLimit: 50 }
+    }
+  })
   const wsRef = useRef(null)
 
   useEffect(() => {
@@ -186,8 +201,19 @@ function App() {
       // Clear previous run's activity and summary before sending a new question
       setActivities([])
       setSearchResults(null)
-      // Backend expects plain text, not JSON
-      wsRef.current.send(message)
+      const payload = {
+        type: 'ask',
+        question: message,
+        settings: {
+          defaultIndex: settings.defaultIndex,
+          timePolicyMode: settings.timePolicyMode,
+          splModel: settings.splModel,
+          vqlModel: settings.vqlModel,
+          summaryModel: settings.summaryModel,
+          rawResultLimit: settings.rawResultLimit,
+        },
+      }
+      wsRef.current.send(JSON.stringify(payload))
       setMessages(prev => [...prev, { role: 'user', content: message }])
     }
   }
@@ -199,12 +225,22 @@ function App() {
     setSearchResults(null)
   }
 
+  const updateSettings = (next) => {
+    setSettings(prev => {
+      const merged = { ...prev, ...next }
+      localStorage.setItem('ath_settings', JSON.stringify(merged))
+      return merged
+    })
+  }
+
   return (
     <ThreatHuntingPlatform 
       messages={messages}
       activities={activities}
       searchResults={searchResults}
       isConnected={isConnected}
+      settings={settings}
+      onUpdateSettings={updateSettings}
       onSendMessage={sendMessage}
       onNewHunt={handleNewHunt}
     />

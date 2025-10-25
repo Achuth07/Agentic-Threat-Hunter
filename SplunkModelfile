@@ -8,19 +8,19 @@ TEMPLATE """
 <|start_header_id|>user<|end_header_id|>
 How many security events have we seen?<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-sourcetype="WinEventLog:Security" | stats count<|eot_id|>
+sourcetype="WinEventLog" source="WinEventLog:Security" | stats count<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 Show me all login failures from the last day.<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-sourcetype="WinEventLog:Security" EventCode=4625 earliest=-1d<|eot_id|>
+sourcetype="WinEventLog" source="WinEventLog:Security" EventCode=4625 earliest=-1d<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 What are the 10 least common processes created on our systems?<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-sourcetype="WinEventLog:Security" EventCode=4688 | stats count by Process_Name | sort count | head 10<|eot_id|>
+sourcetype="WinEventLog" source="WinEventLog:Security" EventCode=4688 | stats count by Process_Name | sort count | head 10<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 Find all processes that were started by powershell.exe.<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-sourcetype="WinEventLog:Security" EventCode=4688 Creator_Process_Name="powershell.exe" | stats count by Process_Name<|eot_id|>
+sourcetype="WinEventLog" source="WinEventLog:Security" EventCode=4688 Creator_Process_Name="powershell.exe" | stats count by Process_Name<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 Show me any outbound network connections made by cmd.exe using Sysmon data.<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
@@ -28,7 +28,7 @@ sourcetype="XmlWinEventLog:Microsoft-Windows-Sysmon/Operational" EventID=3 Image
 <|start_header_id|>user<|end_header_id|>
 List the top 10 users with the most failed logins and show the percentage of total failures they represent.<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-sourcetype="WinEventLog:Security" EventCode=4625 | stats count by Account_Name | eventstats sum(count) as total_failures | eval percentage=round((count/total_failures)*100, 2) | sort -count | head 10<|eot_id|>
+sourcetype="WinEventLog" source="WinEventLog:Security" EventCode=4625 | stats count by Account_Name | eventstats sum(count) as total_failures | eval percentage=round((count/total_failures)*100, 2) | sort -count | head 10<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 Have there been any PowerShell script blocks executed recently? Show me the decoded script content.<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
@@ -36,59 +36,59 @@ sourcetype="XmlWinEventLog:Microsoft-Windows-PowerShell/Operational" EventID=410
 <|start_header_id|>user<|end_header_id|>
 Show me all successful RDP logons.<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-sourcetype="WinEventLog:Security" EventCode=4624 Logon_Type=10<|eot_id|>
+sourcetype="WinEventLog" source="WinEventLog:Security" EventCode=4624 Logon_Type=10<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 How many service logons were there to host achuthdell in the last 24 hours?<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-index=main host="achuthdell" sourcetype="WinEventLog:Security" earliest=-24h EventCode=4624 Logon_Type=5 | stats count<|eot_id|>
+index=main host="achuthdell" sourcetype="WinEventLog" source="WinEventLog:Security" earliest=-24h EventCode=4624 Logon_Type=5 | stats count<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 How many service logons were there on ComputerName=ACHUTHDELL in the last 24 hours?<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-index=main ComputerName="ACHUTHDELL" sourcetype="WinEventLog:Security" earliest=-24h EventCode=4624 Logon_Type=5 | stats count<|eot_id|>
+index=main ComputerName="ACHUTHDELL" sourcetype="WinEventLog" source="WinEventLog:Security" earliest=-24h EventCode=4624 Logon_Type=5 | stats count<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 Show a count of interactive logons by account name in the last 7 days.<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-index=main sourcetype="WinEventLog:Security" earliest=-7d EventCode=4624 Logon_Type=2 | stats count by Account_Name<|eot_id|>
+index=main sourcetype="WinEventLog" source="WinEventLog:Security" earliest=-7d EventCode=4624 Logon_Type=2 | stats count by Account_Name<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 Top 5 hosts by failed logons in the last hour.<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-index=main sourcetype="WinEventLog:Security" earliest=-1h EventCode=4625 | stats count by host | sort - count | head 5<|eot_id|>
+index=main sourcetype="WinEventLog" source="WinEventLog:Security" earliest=-1h EventCode=4625 | stats count by host | sort - count | head 5<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 Which users logged on via RDP in the last 24 hours?<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-index=main sourcetype="WinEventLog:Security" earliest=-24h EventCode=4624 Logon_Type=10 | stats count by Account_Name<|eot_id|>
+index=main sourcetype="WinEventLog" source="WinEventLog:Security" earliest=-24h EventCode=4624 Logon_Type=10 | stats count by Account_Name<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 How many unique users successfully logged on in the last 24 hours?<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-index=main sourcetype="WinEventLog:Security" earliest=-24h EventCode=4624 | stats dc(Account_Name) as unique_users<|eot_id|>
+index=main sourcetype="WinEventLog" source="WinEventLog:Security" earliest=-24h EventCode=4624 | stats dc(Account_Name) as unique_users<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 Show explicit credential logons by account name in the last 24 hours.<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-index=main sourcetype="WinEventLog:Security" earliest=-24h EventCode=4648 | stats count by Account_Name<|eot_id|>
+index=main sourcetype="WinEventLog" source="WinEventLog:Security" earliest=-24h EventCode=4648 | stats count by Account_Name<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 Count of failed service logons in the last day.<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-index=main sourcetype="WinEventLog:Security" earliest=-1d EventCode=4625 Logon_Type=5 | stats count<|eot_id|>
+index=main sourcetype="WinEventLog" source="WinEventLog:Security" earliest=-1d EventCode=4625 Logon_Type=5 | stats count<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 Show network logons to host achuthdell over the last 12 hours.<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-index=main host="achuthdell" sourcetype="WinEventLog:Security" earliest=-12h EventCode=4624 Logon_Type=3 | stats count<|eot_id|>
+index=main host="achuthdell" sourcetype="WinEventLog" source="WinEventLog:Security" earliest=-12h EventCode=4624 Logon_Type=3 | stats count<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 Show interactive logons on ComputerName=ACHUTHDELL for the last 2 hours by account name.<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-index=main ComputerName="ACHUTHDELL" sourcetype="WinEventLog:Security" earliest=-2h EventCode=4624 Logon_Type=2 | stats count by Account_Name<|eot_id|>
+index=main ComputerName="ACHUTHDELL" sourcetype="WinEventLog" source="WinEventLog:Security" earliest=-2h EventCode=4624 Logon_Type=2 | stats count by Account_Name<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 Show the last successful logon time for Account_Name=alice in the past 7 days.<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-index=main sourcetype="WinEventLog:Security" earliest=-7d EventCode=4624 Account_Name="alice" | stats latest(_time) as last_seen by host | sort - last_seen<|eot_id|>
+index=main sourcetype="WinEventLog" source="WinEventLog:Security" earliest=-7d EventCode=4624 Account_Name="alice" | stats latest(_time) as last_seen by host | sort - last_seen<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 Find process creation events by Account_Name=SYSTEM in the last day.<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-index=main sourcetype="WinEventLog:Security" earliest=-1d EventCode=4688 Account_Name="SYSTEM" | stats count by Process_Name<|eot_id|>
+index=main sourcetype="WinEventLog" source="WinEventLog:Security" earliest=-1d EventCode=4688 Account_Name="SYSTEM" | stats count by Process_Name<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 Count failed logons by username in the past 48 hours.<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
-index=main sourcetype="WinEventLog:Security" earliest=-48h EventCode=4625 | stats count by Account_Name<|eot_id|>
+index=main sourcetype="WinEventLog" source="WinEventLog:Security" earliest=-48h EventCode=4625 | stats count by Account_Name<|eot_id|>
 <|start_header_id|>user<|end_header_id|>
 {{.Prompt}}<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>
@@ -115,7 +115,7 @@ TIME RANGE POLICY:
 - If the user mentions a time range, always include earliest= or latest=.
 
 DATA SOURCE ASSUMPTIONS:
-- Windows Event Logs: sourcetype=WinEventLog:Security, WinEventLog:System, or WinEventLog:Application
+- Windows Event Logs: sourcetype=WinEventLog and source="WinEventLog:<Channel>" (Security, System, Application)
 - Sysmon logs: sourcetype=XmlWinEventLog:Microsoft-Windows-Sysmon/Operational
 - PowerShell logs: sourcetype=XmlWinEventLog:Microsoft-Windows-PowerShell/Operational
 
@@ -138,10 +138,10 @@ AGGREGATION BEHAVIOR:
 
 EXAMPLES OF CORRECT OUTPUT (no labels, no backticks):
 User: "Find failed logins"
-Assistant: sourcetype="WinEventLog:Security" EventCode=4625 earliest=-24h
+Assistant: sourcetype="WinEventLog" source="WinEventLog:Security" EventCode=4625 earliest=-24h
 
 User: "Show process creation events"
-Assistant: sourcetype="WinEventLog:Security" EventCode=4688 | stats count by Process_Name
+Assistant: sourcetype="WinEventLog" source="WinEventLog:Security" EventCode=4688 | stats count by Process_Name
 
 Remember: Output ONLY the SPL query. No text before or after.
 """

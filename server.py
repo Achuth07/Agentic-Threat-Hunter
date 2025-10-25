@@ -48,8 +48,11 @@ if os.path.isdir(FAVICON_DIR):
 
 
 
-def _apply_index_policy(question: str, spl: str):
-    """Enforce default index policy and return (new_spl, reason_or_None)."""
+def _apply_index_policy(question: str, spl: str, default_index: str | None = None):
+    """Enforce default index policy and return (new_spl, reason_or_None).
+    Allows per-request override of default index.
+    """
+    default_index = default_index or DEFAULT_INDEX
     q_lower = (question or "").lower()
     wants_internal = ("internal" in q_lower) or ("_internal" in q_lower)
 
@@ -62,15 +65,15 @@ def _apply_index_policy(question: str, spl: str):
 
     # If explicit _internal but question didn't ask for it, rewrite
     if any(ix == "_internal" for ix in indexes) and not wants_internal:
-        new = index_pattern.sub(lambda m: f"index={DEFAULT_INDEX}" if m.group(1).lower() == "_internal" else m.group(0), s)
-        return new, f"Rewrote index=_internal to index={DEFAULT_INDEX}"
+        new = index_pattern.sub(lambda m: f"index={default_index}" if m.group(1).lower() == "_internal" else m.group(0), s)
+        return new, f"Rewrote index=_internal to index={default_index}"
 
     # If no index provided and generating command is 'search', inject default index
     starts_with_search = s_lower.startswith("search ") or s_lower.startswith("| search ")
     if not indexes and starts_with_search:
-        new = re.sub(r"^(\|\s*)?search\s+", lambda m: f"{m.group(0)}index={DEFAULT_INDEX} ", s, count=1, flags=re.IGNORECASE)
+        new = re.sub(r"^(\|\s*)?search\s+", lambda m: f"{m.group(0)}index={default_index} ", s, count=1, flags=re.IGNORECASE)
         if new != s:
-            return new, f"Inserted index={DEFAULT_INDEX} as default"
+            return new, f"Inserted index={default_index} as default"
 
     return s, None
 
@@ -171,8 +174,10 @@ def health_velociraptor():
         }
 
 
-async def _summarize_results(question: str, spl: str, rows: list[dict]) -> str:
-    """Use the local LLM to summarize results into a short human-friendly paragraph."""
+async def _summarize_results(question: str, spl: str, rows: list[dict], model: str | None = None) -> str:
+    """Use the local LLM to summarize results into a short human-friendly paragraph.
+    Allows per-request model override.
+    """
     try:
         sample = rows[:10]
         prompt = ChatPromptTemplate.from_messages([
@@ -191,7 +196,7 @@ Write a short, human-friendly summary.""",
             ),
         ])
         # Use summarization model separate from SPL generator
-        llm = ChatOllama(model=SUMMARY_MODEL)
+        llm = ChatOllama(model=(model or SUMMARY_MODEL))
         messages = prompt.format_messages(
             spl=spl, count=len(rows), sample=json.dumps(sample)[:4000], question=question
         )
@@ -221,6 +226,11 @@ Rules:
 Index policy:
 - Default to index=main when the user does not specify an index.
 - Use index=_internal only if the user explicitly mentions internal logs or _internal.
+Windows Event Log field mapping:
+- For classic Windows Event Logs (Security, System, Application):
+  - Use sourcetype=WinEventLog
+  - And source="WinEventLog:<Channel>" (e.g., source="WinEventLog:Security")
+  - Do NOT use sourcetype="WinEventLog:Security"; the channel belongs in source.
 Examples:
     User: Find login failures
         You: search index=auth sourcetype=secure action=failure earliest=-24h | stats count""",
@@ -305,7 +315,7 @@ def _route_tool(question: str) -> str:
     """
     q = (question or "").lower()
     
-    # First: VirusTotal indicators for threat intel / reputation checks
+    # Priority 1: VirusTotal indicators for threat intel / reputation checks
     vt_keywords = [
         "virustotal", "virus total", "vt", "malicious", "reputation", "threat intel",
         "check hash", "check ip", "check url", "is this malicious", "ioc", "indicator of compromise"
@@ -313,13 +323,21 @@ def _route_tool(question: str) -> str:
     if any(k in q for k in vt_keywords):
         return "check_virustotal"
     
-    # First: Splunk indicators should take precedence over generic endpoint words
+    # Priority 2: Splunk-specific indicators (EventID, sourcetype, etc.)
     splunk_indicators = ["eventid", "eventcode", "sourcetype", "index=", "tstats", "mstats", "search ", "dashboard", "siem"]
     if any(k in q for k in splunk_indicators):
         return "execute_splunk_search"
+    
+    # Priority 3: Authentication/login/logon events (always Splunk, never Velociraptor)
+    auth_keywords = [
+        "login", "logon", "logoff", "logout", "authentication", "auth", "failed login", 
+        "failed logon", "successful login", "successful logon", "user login", "user logon",
+        "account login", "account logon", "credential", "password"
+    ]
+    if any(k in q for k in auth_keywords):
+        return "execute_splunk_search"
 
-    # Heuristic: endpoint/DFIR intents => Velociraptor
-    # Check for process-related keywords first (highest priority for Velociraptor)
+    # Priority 4: Process-related keywords (Velociraptor for live endpoint state)
     process_keywords = ["process", "processes", "running", "pslist", "tasklist", "pid", "executable"]
     if any(k in q for k in process_keywords):
         # Only route to Velociraptor if it's NOT about Splunk process events
@@ -360,18 +378,34 @@ Tools (choose one):
   Purpose: Threat intelligence and reputation lookups. Use when the user wants to check if an IP, file hash, or URL is malicious, query VirusTotal, or get IOC reputation.
 
 Routing rules (decide with certainty):
-1) If the request mentions processes, running programs, process list, services, or executable files on a system -> run_velociraptor_query.
-2) If the request is about the current state of a computer/endpoint (network connections, listening ports, local users, basic system/computer info, prefetch, registry, files on disk) -> run_velociraptor_query.
-3) If the request mentions Windows Event IDs, EventCode, sourcetype, index=, dashboards, SIEM analytics, authentication/logon events, trends over time, or searching logs -> execute_splunk_search. NEVER use run_velociraptor_query for logon/authentication events.
-4) If the user says "on host/computer X", "on this machine", "on the endpoint", "on the system" and wants system state -> run_velociraptor_query (Velociraptor runs on an endpoint).
-5) If the user says "in Splunk", "SPL", or includes SPL-like tokens (index=, tstats, mstats) -> execute_splunk_search.
-6) If the user asks to check if an IP/hash/URL is malicious, wants VirusTotal data, or mentions threat intel/IOC reputation -> check_virustotal.
+1) If the request mentions login, logon, authentication, failed login, successful login, credentials, or password events -> execute_splunk_search. ALWAYS use Splunk for authentication/logon queries, NEVER Velociraptor.
+2) If the request mentions Windows Event IDs, EventCode, sourcetype, index=, dashboards, SIEM analytics, trends over time, or searching logs -> execute_splunk_search.
+3) If the request mentions processes, running programs, process list, services, or executable files on a system -> run_velociraptor_query.
+4) If the request is about the current state of a computer/endpoint (network connections, listening ports, local users, basic system/computer info, prefetch, registry, files on disk) -> run_velociraptor_query.
+5) If the user says "on host/computer X", "on this machine", "on the endpoint", "on the system" and wants system state -> run_velociraptor_query (Velociraptor runs on an endpoint).
+6) If the user says "in Splunk", "SPL", or includes SPL-like tokens (index=, tstats, mstats) -> execute_splunk_search.
+7) If the user asks to check if an IP/hash/URL is malicious, wants VirusTotal data, or mentions threat intel/IOC reputation -> check_virustotal.
 
 Output format:
 - Return EXACTLY one token: execute_splunk_search OR run_velociraptor_query OR check_virustotal
 - No extra words, punctuation, or quotes.
 
 Examples:
+User: check for failed login events on host achuthdell
+You: execute_splunk_search
+
+User: failed logons in last 24 hours
+You: execute_splunk_search
+
+User: show successful authentication events
+You: execute_splunk_search
+
+User: count 4625 failed logons by user over the past day
+You: execute_splunk_search
+
+User: user login activity for the past week
+You: execute_splunk_search
+
 User: list running processes on achuthdell
 You: run_velociraptor_query
 
@@ -387,9 +421,6 @@ You: run_velociraptor_query
 User: list all running programs
 You: run_velociraptor_query
 
-User: failed logons in last 24 hours
-You: execute_splunk_search
-
 User: what is the basic information about this computer?
 You: run_velociraptor_query
 
@@ -401,9 +432,6 @@ You: execute_splunk_search
 
 User: show active listening ports
 You: run_velociraptor_query
-
-User: count 4625 failed logons by user over the past day
-You: execute_splunk_search
 
 User: is this IP malicious? 8.8.8.8
 You: check_virustotal
@@ -418,11 +446,12 @@ You: check_virustotal
     msg = llm.invoke(router_prompt.format_messages(q=question))
     choice = (getattr(msg, "content", str(msg)) or "").strip()
     return choice if choice in {"execute_splunk_search", "run_velociraptor_query", "check_virustotal"} else "execute_splunk_search"
-def _apply_time_window_policy(question: str, spl: str):
+def _apply_time_window_policy(question: str, spl: str, mode: str | None = None):
     """Normalize/insert earliest/latest based on natural language like 'last 24 hours'.
     Returns (new_spl, reason_or_None). Conservative heuristic.
+    Allows per-request override of TIME_POLICY_MODE.
     """
-    mode = TIME_POLICY_MODE  # off | normalize | infer
+    mode = (mode or TIME_POLICY_MODE)  # off | normalize | infer
     if mode not in {"off", "normalize", "infer"}:
         mode = "normalize"
 
@@ -464,6 +493,43 @@ def _apply_time_window_policy(question: str, spl: str):
     return (s, reason) if reason else (s, None)
 
 
+def _normalize_windows_eventlog_fields(spl: str):
+    """Normalize Windows Event Log searches to this canonical form:
+    - sourcetype=WinEventLog
+    - source="WinEventLog:<Channel>"  (e.g., Security, System, Application)
+
+    Many environments ingest Windows logs with channel in the source field and a
+    generic sourcetype. If we detect sourcetype=WinEventLog:<Channel>, rewrite it.
+
+    Returns (new_spl, reason_or_None).
+    """
+    import re
+    s = spl
+    # Regex to capture sourcetype=WinEventLog:<Channel>, with optional quotes and case-insensitive
+    pat = re.compile(r"(?i)\bsourcetype\s*=\s*['\"]?WinEventLog:(Security|System|Application)['\"]?")
+    # If it's already in canonical form, do nothing
+    already_canonical = re.search(r"(?i)\bsourcetype\s*=\s*['\"]?WinEventLog['\"]?\b", s) and \
+                        re.search(r"(?i)\bsource\s*=\s*['\"]?WinEventLog:(Security|System|Application)['\"]?\b", s)
+    if already_canonical:
+        return s, None
+
+    def _repl(m: re.Match):
+        channel = m.group(1)
+        return f'sourcetype=WinEventLog source="WinEventLog:{channel}"'
+
+    new_s = pat.sub(_repl, s)
+    if new_s != s:
+        return new_s, "Rewrote sourcetype=WinEventLog:<Channel> to sourcetype=WinEventLog and source=WinEventLog:<Channel>"
+
+    # Also handle odd cases like sourcetype='WinEventLog:security' without quotes or different case
+    pat2 = re.compile(r"(?i)\bsourcetype\s*=\s*WinEventLog:(Security|System|Application)\b")
+    new_s2 = pat2.sub(lambda m: f'sourcetype=WinEventLog source="WinEventLog:{m.group(1)}"', s)
+    if new_s2 != s:
+        return new_s2, "Rewrote sourcetype=WinEventLog:<Channel> to canonical Windows Event Log fields"
+
+    return s, None
+
+
 @app.get("/health/virustotal")
 def health_virustotal():
     """Quick health check for VirusTotal API key and connectivity."""
@@ -500,8 +566,34 @@ async def ws_chat(websocket: WebSocket):
     await websocket.accept()
     try:
         while True:
-            # Expect plain text with the user's question
-            question = await websocket.receive_text()
+            # Expect plain text or JSON payload with the user's question
+            incoming = await websocket.receive_text()
+            # Parse either plain text or JSON payload with settings
+            req_default_index = DEFAULT_INDEX
+            req_time_mode = TIME_POLICY_MODE
+            req_spl_model = OLLAMA_MODEL
+            req_vql_model = VQL_MODEL
+            req_summary_model = SUMMARY_MODEL
+            req_raw_limit = 50
+            try:
+                data = json.loads(incoming)
+                if isinstance(data, dict) and ("question" in data or data.get("type") == "ask"):
+                    question = data.get("question") or data.get("q") or ""
+                    settings = data.get("settings") or {}
+                    req_default_index = settings.get("defaultIndex", req_default_index)
+                    req_time_mode = (settings.get("timePolicyMode", req_time_mode) or req_time_mode).lower()
+                    req_spl_model = settings.get("splModel", req_spl_model)
+                    req_vql_model = settings.get("vqlModel", req_vql_model)
+                    req_summary_model = settings.get("summaryModel", req_summary_model)
+                    try:
+                        req_raw_limit = int(settings.get("rawResultLimit", req_raw_limit))
+                    except Exception:
+                        req_raw_limit = 50
+                else:
+                    question = incoming
+            except Exception:
+                # Treat as plain text
+                question = incoming
 
             # 1) Notify start
             await websocket.send_json({
@@ -784,13 +876,13 @@ async def ws_chat(websocket: WebSocket):
                                 "source": "velociraptor",
                                 "title": "Active Connections (Velociraptor)",
                                 "count": velo_count,
-                                "results": velo_results_list[:50] if isinstance(velo_results_list, list) else [],
+                                "results": velo_results_list[:req_raw_limit] if isinstance(velo_results_list, list) else [],
                             },
                             {
                                 "source": "splunk",
                                 "title": "Historical Communication (Splunk)",
                                 "count": spl_count,
-                                "results": spl_results_list[:50] if isinstance(spl_results_list, list) else [],
+                                "results": spl_results_list[:req_raw_limit] if isinstance(spl_results_list, list) else [],
                             },
                         ],
                     })
@@ -811,7 +903,7 @@ async def ws_chat(websocket: WebSocket):
                     "status": "running",
                     "icon": "robot",
                 })
-                vql_llm = ChatOllama(model=VQL_MODEL)
+                vql_llm = ChatOllama(model=req_vql_model)
                 vql_prompt = _build_vql_prompt()
                 vql_msg = await run_in_threadpool(vql_llm.invoke, vql_prompt.format_messages(question=question))
                 vql_raw = getattr(vql_msg, "content", str(vql_msg))
@@ -865,7 +957,7 @@ async def ws_chat(websocket: WebSocket):
                         "status": "running",
                         "icon": "robot",
                     })
-                    summary_body = await _summarize_results(question, vql_query, results_list if isinstance(results_list, list) else [])
+                    summary_body = await _summarize_results(question, vql_query, results_list if isinstance(results_list, list) else [], model=req_summary_model)
                     formatted_summary = f"Result Summary: {summary_body}" if summary_body else "Result Summary: (no rows)"
                     await websocket.send_json({
                         "type": "activity",
@@ -894,7 +986,7 @@ async def ws_chat(websocket: WebSocket):
 
             # 3) Splunk path: Generate SPL with LLM
             prompt = _build_prompt()
-            llm = ChatOllama(model=OLLAMA_MODEL)
+            llm = ChatOllama(model=req_spl_model)
             messages = prompt.format_messages(question=question)
             await websocket.send_json({
                 "type": "activity",
@@ -963,7 +1055,7 @@ async def ws_chat(websocket: WebSocket):
                 })
 
             # Apply index policy after normalization
-            enforced_spl, policy_reason = _apply_index_policy(question, normalized_spl)
+            enforced_spl, policy_reason = _apply_index_policy(question, normalized_spl, default_index=req_default_index)
             if policy_reason:
                 await websocket.send_json({
                     "type": "activity",
@@ -975,16 +1067,28 @@ async def ws_chat(websocket: WebSocket):
                 normalized_spl = enforced_spl
 
             # Apply time-window policy
-            time_spl, time_reason = _apply_time_window_policy(question, normalized_spl)
+            time_spl, time_reason = _apply_time_window_policy(question, normalized_spl, mode=req_time_mode)
             if time_reason:
                 await websocket.send_json({
                     "type": "activity",
                     "title": "Time window applied",
-                    "detail": f"{time_reason} (mode={TIME_POLICY_MODE})",
+                    "detail": f"{time_reason} (mode={req_time_mode})",
                     "status": "done",
                     "icon": "clock",
                 })
                 normalized_spl = time_spl
+
+            # Normalize Windows Event Log field usage if needed
+            win_spl, win_reason = _normalize_windows_eventlog_fields(normalized_spl)
+            if win_reason:
+                await websocket.send_json({
+                    "type": "activity",
+                    "title": "Windows Event Log fields normalized",
+                    "detail": win_reason,
+                    "status": "done",
+                    "icon": "wrench",
+                })
+                normalized_spl = win_spl
 
             # Log final SPL for debugging
             await websocket.send_json({
@@ -1022,7 +1126,7 @@ async def ws_chat(websocket: WebSocket):
                     "status": "running",
                     "icon": "robot",
                 })
-                summary_body = await _summarize_results(question, normalized_spl, results_list)
+                summary_body = await _summarize_results(question, normalized_spl, results_list, model=req_summary_model)
                 formatted_summary = f"Result Summary: {summary_body}" if summary_body else "Result Summary: (no rows)"
                 await websocket.send_json({
                     "type": "activity",
@@ -1038,7 +1142,7 @@ async def ws_chat(websocket: WebSocket):
                     "source": "splunk",
                     "spl": normalized_spl,
                     "count": count,
-                    "results": results_list[:50],  # cap to keep payload small
+                    "results": results_list[:req_raw_limit],  # cap based on settings
                     "summary": formatted_summary,
                 })
             except AuthenticationError as e:

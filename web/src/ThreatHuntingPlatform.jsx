@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, Activity, Plug, Settings, Menu, Shield, Search, AlertCircle, CheckCircle2, Clock, Copy, Plus, TrendingUp, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
-export default function ThreatHuntingPlatform({ messages, activities, searchResults, isConnected, onSendMessage, onNewHunt }) {
+export default function ThreatHuntingPlatform({ messages, activities, searchResults, isConnected, settings, onUpdateSettings, onSendMessage, onNewHunt }) {
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeView, setActiveView] = useState('chat');
@@ -777,13 +777,14 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
         {/* Settings View */}
         {activeView === 'settings' && (
           <div className="flex-1 overflow-y-auto px-4 lg:px-8 py-4 lg:py-6">
-            <div className="max-w-3xl mx-auto">
-              <div className="bg-neutral-950 rounded-2xl border border-neutral-800 p-4 lg:p-6 mb-4 lg:mb-6">
-                <h3 className="text-sm lg:text-base font-semibold mb-4 lg:mb-5">Connection Settings</h3>
+            <div className="max-w-3xl mx-auto space-y-4 lg:space-y-6">
+              {/* Connection Status */}
+              <div className="bg-neutral-950 rounded-2xl border border-neutral-800 p-4 lg:p-6">
+                <h3 className="text-sm lg:text-base font-semibold mb-4 lg:mb-5">Connection Status</h3>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between p-3 lg:p-4 bg-black rounded-xl border border-neutral-800">
                     <div>
-                      <div className="text-xs lg:text-sm font-medium mb-1">WebSocket Status</div>
+                      <div className="text-xs lg:text-sm font-medium mb-1">WebSocket</div>
                       <div className="text-xs text-neutral-500">
                         {isConnected ? 'Connected to backend' : 'Disconnected from backend'}
                       </div>
@@ -793,6 +794,124 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                 </div>
               </div>
 
+              {/* Query Configuration */}
+              <div className="bg-neutral-950 rounded-2xl border border-neutral-800 p-4 lg:p-6">
+                <h3 className="text-sm lg:text-base font-semibold mb-4 lg:mb-5">Query Configuration</h3>
+                <div className="space-y-4">
+                  {/* Default Index */}
+                  <div>
+                    <label className="text-xs lg:text-sm font-medium text-neutral-300 mb-2 block">
+                      Default Splunk Index
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.defaultIndex}
+                      onChange={(e) => onUpdateSettings({ defaultIndex: e.target.value })}
+                      placeholder="main"
+                      className="w-full bg-black border border-neutral-800 rounded-lg px-3 lg:px-4 py-2 lg:py-2.5 text-xs lg:text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-brand transition-colors"
+                    />
+                    <p className="text-xs text-neutral-500 mt-1.5">
+                      Index to use when not explicitly specified in the query
+                    </p>
+                  </div>
+
+                  {/* Time Policy Mode */}
+                  <div>
+                    <label className="text-xs lg:text-sm font-medium text-neutral-300 mb-2 block">
+                      Time Window Policy
+                    </label>
+                    <select
+                      value={settings.timePolicyMode}
+                      onChange={(e) => onUpdateSettings({ timePolicyMode: e.target.value })}
+                      className="w-full bg-black border border-neutral-800 rounded-lg px-3 lg:px-4 py-2 lg:py-2.5 text-xs lg:text-sm text-white focus:outline-none focus:border-brand transition-colors"
+                    >
+                      <option value="off">Off – No automatic time windows</option>
+                      <option value="normalize">Normalize – Fix invalid syntax only</option>
+                      <option value="infer">Infer – Add time windows from natural language</option>
+                    </select>
+                    <p className="text-xs text-neutral-500 mt-1.5">
+                      Controls how the agent handles time ranges in queries
+                    </p>
+                  </div>
+
+                  {/* Raw Result Limit */}
+                  <div>
+                    <label className="text-xs lg:text-sm font-medium text-neutral-300 mb-2 block">
+                      Raw Result Limit
+                    </label>
+                    <input
+                      type="number"
+                      min="10"
+                      max="500"
+                      value={settings.rawResultLimit}
+                      onChange={(e) => onUpdateSettings({ rawResultLimit: parseInt(e.target.value, 10) || 50 })}
+                      className="w-full bg-black border border-neutral-800 rounded-lg px-3 lg:px-4 py-2 lg:py-2.5 text-xs lg:text-sm text-white focus:outline-none focus:border-brand transition-colors"
+                    />
+                    <p className="text-xs text-neutral-500 mt-1.5">
+                      Maximum number of raw events to display (10–500)
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Model Configuration */}
+              <div className="bg-neutral-950 rounded-2xl border border-neutral-800 p-4 lg:p-6">
+                <h3 className="text-sm lg:text-base font-semibold mb-4 lg:mb-5">AI Model Configuration</h3>
+                <div className="space-y-4">
+                  {/* SPL Model */}
+                  <div>
+                    <label className="text-xs lg:text-sm font-medium text-neutral-300 mb-2 block">
+                      Splunk Query Generation Model
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.splModel}
+                      onChange={(e) => onUpdateSettings({ splModel: e.target.value })}
+                      placeholder="splunk_hunter"
+                      className="w-full bg-black border border-neutral-800 rounded-lg px-3 lg:px-4 py-2 lg:py-2.5 text-xs lg:text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-brand transition-colors"
+                    />
+                    <p className="text-xs text-neutral-500 mt-1.5">
+                      Ollama model for generating SPL queries
+                    </p>
+                  </div>
+
+                  {/* VQL Model */}
+                  <div>
+                    <label className="text-xs lg:text-sm font-medium text-neutral-300 mb-2 block">
+                      Velociraptor Query Generation Model
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.vqlModel}
+                      onChange={(e) => onUpdateSettings({ vqlModel: e.target.value })}
+                      placeholder="velociraptor_hunter"
+                      className="w-full bg-black border border-neutral-800 rounded-lg px-3 lg:px-4 py-2 lg:py-2.5 text-xs lg:text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-brand transition-colors"
+                    />
+                    <p className="text-xs text-neutral-500 mt-1.5">
+                      Ollama model for generating VQL queries
+                    </p>
+                  </div>
+
+                  {/* Summary Model */}
+                  <div>
+                    <label className="text-xs lg:text-sm font-medium text-neutral-300 mb-2 block">
+                      Summary Generation Model
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.summaryModel}
+                      onChange={(e) => onUpdateSettings({ summaryModel: e.target.value })}
+                      placeholder="llama3:8b"
+                      className="w-full bg-black border border-neutral-800 rounded-lg px-3 lg:px-4 py-2 lg:py-2.5 text-xs lg:text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-brand transition-colors"
+                    />
+                    <p className="text-xs text-neutral-500 mt-1.5">
+                      Ollama model for summarizing search results
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* About */}
               <div className="bg-neutral-950 rounded-2xl border border-neutral-800 p-4 lg:p-6">
                 <h3 className="text-sm lg:text-base font-semibold mb-4 lg:mb-5">About</h3>
                 <div className="space-y-2 text-xs lg:text-sm text-neutral-400">
@@ -800,6 +919,8 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                   <p><span className="text-neutral-300 font-medium">Backend:</span> FastAPI + WebSocket</p>
                   <p><span className="text-neutral-300 font-medium">LLM:</span> Ollama (Local)</p>
                   <p><span className="text-neutral-300 font-medium">SIEM:</span> Splunk Enterprise</p>
+                  <p><span className="text-neutral-300 font-medium">EDR/DFIR:</span> Velociraptor</p>
+                  <p><span className="text-neutral-300 font-medium">Threat Intel:</span> VirusTotal</p>
                 </div>
               </div>
             </div>
