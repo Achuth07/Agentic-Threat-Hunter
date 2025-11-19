@@ -12,6 +12,7 @@ import splunklib.results as results
 from splunklib.binding import HTTPError, AuthenticationError
 from tools.velociraptor_tool import run_velociraptor_query
 from tools.virustotal_tool import check_virustotal
+from agent.multitool_agent import build_multitool_graph
 
 # Load env
 load_dotenv()
@@ -29,6 +30,8 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "splunk_hunter")
 SUMMARY_MODEL = os.getenv("SUMMARY_MODEL", "llama3:8b")
 # VQL_MODEL is used for Velociraptor VQL generation.
 VQL_MODEL = os.getenv("VQL_MODEL", "velociraptor_hunter")
+# CODER_MODEL is used for reflection/correction.
+CODER_MODEL = os.getenv("CODER_MODEL", "qwen2.5-coder:7b")
 # Default index policy
 DEFAULT_INDEX = os.getenv("DEFAULT_INDEX", "main")
 # Time policy mode: off | normalize | infer
@@ -574,6 +577,7 @@ async def ws_chat(websocket: WebSocket):
             req_spl_model = OLLAMA_MODEL
             req_vql_model = VQL_MODEL
             req_summary_model = SUMMARY_MODEL
+            req_coder_model = CODER_MODEL
             req_raw_limit = 50
             try:
                 data = json.loads(incoming)
@@ -584,7 +588,9 @@ async def ws_chat(websocket: WebSocket):
                     req_time_mode = (settings.get("timePolicyMode", req_time_mode) or req_time_mode).lower()
                     req_spl_model = settings.get("splModel", req_spl_model)
                     req_vql_model = settings.get("vqlModel", req_vql_model)
+                    req_vql_model = settings.get("vqlModel", req_vql_model)
                     req_summary_model = settings.get("summaryModel", req_summary_model)
+                    req_coder_model = settings.get("coderModel", req_coder_model)
                     try:
                         req_raw_limit = int(settings.get("rawResultLimit", req_raw_limit))
                     except Exception:
@@ -613,8 +619,6 @@ async def ws_chat(websocket: WebSocket):
                 "status": "done",
                 "icon": "robot",
             })
-
-            from starlette.concurrency import run_in_threadpool
 
             if tool_choice == "check_virustotal":
                 # Extract IOC from question using simple heuristics or LLM
@@ -894,279 +898,134 @@ async def ws_chat(websocket: WebSocket):
                     })
                 continue
 
-            if tool_choice == "run_velociraptor_query":
-                # Generate VQL
-                await websocket.send_json({
-                    "type": "activity",
-                    "title": "Generating VQL query",
-                    "detail": "Asking local LLM (Ollama)",
-                    "status": "running",
-                    "icon": "robot",
-                })
-                vql_llm = ChatOllama(model=req_vql_model)
-                vql_prompt = _build_vql_prompt()
-                vql_msg = await run_in_threadpool(vql_llm.invoke, vql_prompt.format_messages(question=question))
-                vql_raw = getattr(vql_msg, "content", str(vql_msg))
-                original_vql = vql_raw.strip().strip("`\"")
-                # Sanitize away disallowed host filters/params
-                vql_query = _sanitize_vql(question, original_vql)
-                await websocket.send_json({
-                    "type": "activity",
-                    "title": "VQL generated",
-                    "detail": vql_query,
-                    "status": "done",
-                    "icon": "code",
-                })
-                if vql_query != original_vql:
-                    await websocket.send_json({
-                        "type": "activity",
-                        "title": "VQL sanitized",
-                        "detail": "Removed disallowed Hostname/ComputerName filters and pslist() params",
-                        "status": "done",
-                        "icon": "robot",
-                    })
-
-                # Execute Velociraptor query
-                await websocket.send_json({
-                    "type": "activity",
-                    "title": "Executing Velociraptor query",
-                    "detail": "Querying endpoint via Velociraptor",
-                    "status": "running",
-                    "icon": "bolt",
-                })
-                try:
-                    raw = await run_in_threadpool(run_velociraptor_query, vql_query)
-                    try:
-                        results_list = json.loads(raw)
-                    except Exception:
-                        results_list = [{"raw": raw}]
-                    count = len(results_list) if isinstance(results_list, list) else 1
-                    await websocket.send_json({
-                        "type": "activity",
-                        "title": "Search completed",
-                        "detail": f"{count} rows returned",
-                        "status": "done",
-                        "icon": "check",
-                    })
-
-                    # Summarize
-                    await websocket.send_json({
-                        "type": "activity",
-                        "title": "Summarizing results",
-                        "detail": "Generating human-readable overview",
-                        "status": "running",
-                        "icon": "robot",
-                    })
-                    summary_body = await _summarize_results(question, vql_query, results_list if isinstance(results_list, list) else [], model=req_summary_model)
-                    formatted_summary = f"Result Summary: {summary_body}" if summary_body else "Result Summary: (no rows)"
-                    await websocket.send_json({
-                        "type": "activity",
-                        "title": "Summary ready",
-                        "detail": formatted_summary[:180] + ("…" if len(formatted_summary) > 180 else ""),
-                        "status": "done",
-                        "icon": "check",
-                    })
-
-                    await websocket.send_json({
-                        "type": "final",
-                        "source": "velociraptor",
-                        "spl": None,
-                        "vql": vql_query,
-                        "count": count,
-                        "results": results_list if isinstance(results_list, list) else [results_list],
-                        "summary": formatted_summary,
-                    })
-                except Exception as e:
-                    await websocket.send_json({
-                        "type": "error",
-                        "title": "Velociraptor error",
-                        "detail": str(e),
-                    })
-                continue
-
-            # 3) Splunk path: Generate SPL with LLM
-            prompt = _build_prompt()
-            llm = ChatOllama(model=req_spl_model)
-            messages = prompt.format_messages(question=question)
-            await websocket.send_json({
-                "type": "activity",
-                "title": "Generating SPL query",
-                "detail": "Asking local LLM (Ollama)",
-                "status": "running",
-                "icon": "robot",
-            })
-            ai_message = await run_in_threadpool(llm.invoke, messages)
-            raw_spl = ai_message.content if hasattr(ai_message, "content") else str(ai_message)
-
-            # Extract SPL from potential few-shot patterns like "SPL: <query>" and strip backticks
-            import re
-            def _extract_spl_text(text: str) -> str:
-                t = text.strip()
-                # If backticked, remove code fences
-                if t.startswith("```") and t.endswith("```"):
-                    t = t.strip("`").strip()
-                # If contains label 'SPL:', capture after it
-                m = re.search(r"(?i)\bSPL\s*:\s*(.+)", t, re.DOTALL)
-                if m:
-                    t = m.group(1).strip()
-                # Aggressively remove ALL backticks (single, double, triple) to prevent Splunk macro errors
-                t = t.replace("`", "")
-                # Remove surrounding quotes
-                t = t.strip("\"'")
-                return t
-
-            spl = _extract_spl_text(raw_spl)
-            await websocket.send_json({
-                "type": "activity",
-                "title": "SPL generated",
-                "detail": spl,
-                "status": "done",
-                "icon": "code",
-            })
-
-            def _normalize_spl(q: str) -> str:
-                # Remove triple backtick blocks if present (defensive, already cleaned in extract)
-                q = q.strip()
-                if q.startswith("```") and q.endswith("```"):
-                    q = q.strip("`")
-                q = q.strip()
-                # Final backtick cleanup to ensure Splunk doesn't see macro syntax artifacts
-                q = q.replace("`", "")
-                lower = q.lower().lstrip()
-                generating = (
-                    lower.startswith("search ")
-                    or lower.startswith("|")
-                    or lower.startswith("from ")
-                    or lower.startswith("tstats ")
-                    or lower.startswith("mstats ")
-                    or lower.startswith("pivot ")
-                    or lower.startswith("datamodel ")
+            else:
+                # Use LangGraph for Splunk and Velociraptor
+                # 1. Build the graph
+                # We build it per-request to capture the latest config/models
+                cfg_path = os.getenv("VELOCIRAPTOR_CONFIG") or os.path.join(os.getcwd(), "api.config.yaml")
+                
+                graph = build_multitool_graph(
+                    splunk_execute_fn=_execute_splunk_search,
+                    velociraptor_fn=lambda vql: run_velociraptor_query.func(vql, config_path=cfg_path),
+                    router_model=req_summary_model, # Use summary model for routing
+                    spl_model=req_spl_model,
+                    vql_model=req_vql_model,
+                    coder_model=req_coder_model
                 )
-                return q if generating else f"search {q}"
 
-            normalized_spl = _normalize_spl(spl)
-            if normalized_spl != spl:
-                await websocket.send_json({
-                    "type": "activity",
-                    "title": "SPL normalized for REST API",
-                    "detail": normalized_spl,
-                    "status": "done",
-                    "icon": "code",
-                })
+                # 2. Stream events
+                final_state = None
+                async for event in graph.astream_events({"user_query": question}, version="v1"):
+                    kind = event["event"]
+                    name = event["name"]
+                    
+                    if kind == "on_chain_start" and name == "tool_router":
+                         await websocket.send_json({
+                            "type": "activity",
+                            "title": "Routing",
+                            "detail": "Deciding between Splunk and Velociraptor",
+                            "status": "running",
+                            "icon": "robot",
+                        })
+                    elif kind == "on_chain_end" and name == "tool_router":
+                        # event['data']['output'] is {'tool_choice': ...}
+                        output = event["data"].get("output")
+                        if output and "tool_choice" in output:
+                             await websocket.send_json({
+                                "type": "activity",
+                                "title": "Tool selected",
+                                "detail": output["tool_choice"],
+                                "status": "done",
+                                "icon": "robot",
+                            })
 
-            # Apply index policy after normalization
-            enforced_spl, policy_reason = _apply_index_policy(question, normalized_spl, default_index=req_default_index)
-            if policy_reason:
-                await websocket.send_json({
-                    "type": "activity",
-                    "title": "Index policy applied",
-                    "detail": policy_reason,
-                    "status": "done",
-                    "icon": "robot",
-                })
-                normalized_spl = enforced_spl
+                    elif kind == "on_chain_start" and name == "generate_query":
+                         await websocket.send_json({
+                            "type": "activity",
+                            "title": "Generating Query",
+                            "detail": "Drafting SPL or VQL...",
+                            "status": "running",
+                            "icon": "code",
+                        })
+                    elif kind == "on_chain_end" and name == "generate_query":
+                        output = event["data"].get("output")
+                        if output:
+                            q_str = output.get("spl_query") or output.get("vql_query")
+                            if q_str:
+                                await websocket.send_json({
+                                    "type": "activity",
+                                    "title": "Query Generated",
+                                    "detail": q_str,
+                                    "status": "done",
+                                    "icon": "code",
+                                })
 
-            # Apply time-window policy
-            time_spl, time_reason = _apply_time_window_policy(question, normalized_spl, mode=req_time_mode)
-            if time_reason:
-                await websocket.send_json({
-                    "type": "activity",
-                    "title": "Time window applied",
-                    "detail": f"{time_reason} (mode={req_time_mode})",
-                    "status": "done",
-                    "icon": "clock",
-                })
-                normalized_spl = time_spl
+                    elif kind == "on_chain_start" and name == "execute_tool":
+                         await websocket.send_json({
+                            "type": "activity",
+                            "title": "Executing Tool",
+                            "detail": "Running query...",
+                            "status": "running",
+                            "icon": "bolt",
+                        })
+                    elif kind == "on_chain_end" and name == "execute_tool":
+                         # We don't send "done" here yet because we might reflect. 
+                         # But for UI feedback, let's say execution is done.
+                         await websocket.send_json({
+                            "type": "activity",
+                            "title": "Execution finished",
+                            "detail": "Results received",
+                            "status": "done",
+                            "icon": "check",
+                        })
 
-            # Normalize Windows Event Log field usage if needed
-            win_spl, win_reason = _normalize_windows_eventlog_fields(normalized_spl)
-            if win_reason:
-                await websocket.send_json({
-                    "type": "activity",
-                    "title": "Windows Event Log fields normalized",
-                    "detail": win_reason,
-                    "status": "done",
-                    "icon": "wrench",
-                })
-                normalized_spl = win_spl
+                    elif kind == "on_chain_start" and name == "reflect_node":
+                         await websocket.send_json({
+                            "type": "activity",
+                            "title": "Self-Correction",
+                            "detail": "Error detected. Reflecting and retrying...",
+                            "status": "running",
+                            "icon": "alert",
+                        })
+                    
+                    if kind == "on_chain_end" and name == "LangGraph":
+                        final_state = event["data"].get("output")
 
-            # Log final SPL for debugging
-            await websocket.send_json({
-                "type": "activity",
-                "title": "Final SPL query to Splunk",
-                "detail": normalized_spl,
-                "status": "done",
-                "icon": "code",
-            })
+                # 3. Process final results
+                if final_state:
+                    results_data = final_state.get("results")
+                    tool = final_state.get("tool_choice")
+                    spl = final_state.get("spl_query")
+                    vql = final_state.get("vql_query")
+                    error = final_state.get("error")
 
-            # 4) Execute Splunk search
-            await websocket.send_json({
-                "type": "activity",
-                "title": "Executing Splunk search",
-                "detail": "Running query against Splunk",
-                "status": "running",
-                "icon": "bolt",
-            })
-            try:
-                results_list = await run_in_threadpool(_execute_splunk_search, normalized_spl)
-                count = len(results_list)
-                await websocket.send_json({
-                    "type": "activity",
-                    "title": "Search completed",
-                    "detail": f"{count} rows returned",
-                    "status": "done",
-                    "icon": "check",
-                })
+                    if error:
+                         await websocket.send_json({
+                            "type": "error",
+                            "title": "Execution Failed",
+                            "detail": f"After retries, the agent could not fix the error: {error}",
+                        })
+                    else:
+                        # Summarize
+                        summary_text = ""
+                        if tool == "execute_splunk_search":
+                             # Splunk results are list[dict]
+                             rows = results_data if isinstance(results_data, list) else []
+                             summary_text = await _summarize_results(question, spl, rows, req_summary_model)
+                        else:
+                             # Velociraptor results are list[dict] (parsed) or dict with error
+                             rows = results_data if isinstance(results_data, list) else []
+                             summary_text = f"Velociraptor returned {len(rows)} rows."
 
-                # 5) Summarize
-                await websocket.send_json({
-                    "type": "activity",
-                    "title": "Summarizing results",
-                    "detail": "Generating human-readable overview",
-                    "status": "running",
-                    "icon": "robot",
-                })
-                summary_body = await _summarize_results(question, normalized_spl, results_list, model=req_summary_model)
-                formatted_summary = f"Result Summary: {summary_body}" if summary_body else "Result Summary: (no rows)"
-                await websocket.send_json({
-                    "type": "activity",
-                    "title": "Summary ready",
-                    "detail": formatted_summary[:180] + ("…" if len(formatted_summary) > 180 else ""),
-                    "status": "done",
-                    "icon": "check",
-                })
-
-                # 6) Send final payload
-                await websocket.send_json({
-                    "type": "final",
-                    "source": "splunk",
-                    "spl": normalized_spl,
-                    "count": count,
-                    "results": results_list[:req_raw_limit],  # cap based on settings
-                    "summary": formatted_summary,
-                })
-            except AuthenticationError as e:
-                await websocket.send_json({
-                    "type": "error",
-                    "title": "Splunk authentication failed",
-                    "detail": str(e),
-                })
-            except HTTPError as e:
-                try:
-                    body = e.body.read().decode("utf-8")
-                except Exception:
-                    body = str(e)
-                await websocket.send_json({
-                    "type": "error",
-                    "title": f"Splunk API Error {e.status} {e.reason}",
-                    "detail": body,
-                })
-            except Exception as e:
-                await websocket.send_json({
-                    "type": "error",
-                    "title": "Unexpected error",
-                    "detail": str(e),
-                })
+                        await websocket.send_json({
+                            "type": "final",
+                            "source": "splunk" if tool == "execute_splunk_search" else "velociraptor",
+                            "spl": spl,
+                            "vql": vql,
+                            "count": len(rows),
+                            "results": rows,
+                            "summary": summary_text,
+                        })
 
     except WebSocketDisconnect:
         return

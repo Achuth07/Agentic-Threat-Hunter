@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import Literal, Optional, TypedDict, Any, Callable
+from typing import Literal, Optional, TypedDict, Any, Callable, List
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import ChatOllama
 from langgraph.graph import StateGraph, END
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
 
 class AgentState(TypedDict):
@@ -12,6 +13,9 @@ class AgentState(TypedDict):
     spl_query: Optional[str]
     vql_query: Optional[str]
     results: Any
+    error: Optional[str]
+    retry_count: int
+    messages: List[BaseMessage]
 
 
 def build_router_node(model_name: str):
@@ -48,7 +52,7 @@ Output format: EXACTLY one of execute_splunk_search OR run_velociraptor_query (n
         if choice not in {"execute_splunk_search", "run_velociraptor_query"}:
             # Fallback to splunk if ambiguous
             choice = "execute_splunk_search"
-        return {"tool_choice": choice}
+        return {"tool_choice": choice, "retry_count": 0, "error": None}
 
     return router
 
@@ -63,8 +67,11 @@ You convert a user's intent into a valid, single-line Splunk SPL. Output ONLY th
 - Use earliest=/latest= for time ranges when given.
 - Windows Security logs: sourcetype=WinEventLog:Security
 - Use proper fields like Account_Name, host or ComputerName (never Computer).
+
+If you are retrying due to an error, analyze the previous error and fix the query.
 """,
         ),
+        ("placeholder", "{messages}"),
         ("human", "{question}"),
     ])
     vql_prompt = ChatPromptTemplate.from_messages([
@@ -76,8 +83,11 @@ Examples:
 - List processes: SELECT * FROM pslist();
 - Find file details: SELECT * FROM stat(filename="C:/Windows/System32/calc.exe");
 - List recent prefetch: SELECT * FROM prefetch();
+
+If you are retrying due to an error, analyze the previous error and fix the query.
 """,
         ),
+        ("placeholder", "{messages}"),
         ("human", "{question}"),
     ])
     spl_llm = ChatOllama(model=spl_model)
@@ -86,12 +96,14 @@ Examples:
     def generate(state: AgentState) -> AgentState:
         tool = state.get("tool_choice") or "execute_splunk_search"
         q = state["user_query"]
+        history = state.get("messages") or []
+        
         if tool == "run_velociraptor_query":
-            msg = vql_llm.invoke(vql_prompt.format_messages(question=q))
+            msg = vql_llm.invoke(vql_prompt.format_messages(question=q, messages=history))
             vql = (msg.content or "").strip().strip("`\"")
             return {"vql_query": vql}
         else:
-            msg = spl_llm.invoke(spl_prompt.format_messages(question=q))
+            msg = spl_llm.invoke(spl_prompt.format_messages(question=q, messages=history))
             spl = (msg.content or "").strip().replace("`", "").strip("\"'")
             return {"spl_query": spl}
 
@@ -108,18 +120,92 @@ def build_executor_node(
         tool = state.get("tool_choice") or "execute_splunk_search"
         if tool == "run_velociraptor_query":
             vql = state.get("vql_query") or "SELECT * FROM pslist();"
-            raw = velociraptor_fn(vql)
             try:
-                results = json.loads(raw)
-            except Exception:
-                results = [{"raw": raw}]
-            return {"results": results}
+                raw = velociraptor_fn(vql)
+                try:
+                    results = json.loads(raw)
+                    # Check for Velociraptor specific error structure
+                    if isinstance(results, dict) and "error" in results:
+                         return {"results": results, "error": results["error"]}
+                except Exception as e:
+                    return {"results": [{"raw": raw}], "error": f"JSON Parse Error: {str(e)}"}
+                return {"results": results, "error": None}
+            except Exception as e:
+                return {"results": [], "error": f"Velociraptor execution error: {str(e)}"}
         else:
             spl = state.get("spl_query") or "index=main | head 5"
-            results = splunk_execute_fn(spl)
-            return {"results": results}
+            try:
+                results = splunk_execute_fn(spl)
+                # Check if it returns a string error
+                if isinstance(results, str) and ("Error" in results or "Exception" in results):
+                     return {"results": [], "error": results}
+                return {"results": results, "error": None}
+            except Exception as e:
+                # Catch any exception from Splunk (HTTPError, AuthenticationError, etc.)
+                error_msg = str(e)
+                # Extract more readable error from HTTPError if available
+                if hasattr(e, 'body'):
+                    try:
+                        error_msg = e.body.read().decode('utf-8')
+                    except:
+                        pass
+                return {"results": [], "error": f"Splunk execution error: {error_msg}"}
 
     return execute
+
+
+def build_validate_node():
+    def validate(state: AgentState) -> AgentState:
+        # This node is a pass-through to allow the conditional edge to check state
+        # The executor already sets 'error' if it catches one.
+        # We could add more complex validation here (e.g. empty results = error?)
+        return state
+    return validate
+
+
+def build_reflect_node(model_name: str):
+    prompt = ChatPromptTemplate.from_messages([
+        (
+            "system",
+            """
+You are a technical assistant helping to fix a failed query.
+Analyze the error and the failed query.
+Explain what went wrong and provide a hint to the generator to fix it.
+Be concise.
+""",
+        ),
+        ("human", "User Query: {question}\nTool: {tool}\nFailed Query: {query}\nError: {error}"),
+    ])
+    llm = ChatOllama(model=model_name)
+
+    def reflect(state: AgentState) -> AgentState:
+        tool = state.get("tool_choice")
+        query = state.get("vql_query") if tool == "run_velociraptor_query" else state.get("spl_query")
+        error = state.get("error")
+        
+        messages = prompt.format_messages(
+            question=state["user_query"],
+            tool=tool,
+            query=query,
+            error=error
+        )
+        msg = llm.invoke(messages)
+        reflection = msg.content
+        
+        # Update history with the error and reflection to guide the next generation
+        current_messages = state.get("messages") or []
+        new_messages = current_messages + [
+            AIMessage(content=query),
+            HumanMessage(content=f"The query failed with error: {error}. \nReflection: {reflection}\nPlease try again with a corrected query.")
+        ]
+        
+        return {
+            "messages": new_messages,
+            "retry_count": state.get("retry_count", 0) + 1,
+            "error": None # Clear error to allow retry
+        }
+
+    return reflect
 
 
 def build_multitool_graph(
@@ -128,19 +214,44 @@ def build_multitool_graph(
     router_model: str,
     spl_model: str,
     vql_model: Optional[str] = None,
+    coder_model: Optional[str] = None,
 ):
     graph = StateGraph(AgentState)
+    
+    # Use coder model for reflection if provided, otherwise fallback to router/base model
+    reflect_model = coder_model or router_model
+
     router = build_router_node(router_model)
     generator = build_query_generator_node(spl_model, vql_model)
     executor = build_executor_node(splunk_execute_fn, velociraptor_fn)
+    validator = build_validate_node()
+    reflector = build_reflect_node(reflect_model)
 
     graph.add_node("tool_router", router)
     graph.add_node("generate_query", generator)
     graph.add_node("execute_tool", executor)
+    graph.add_node("validate_node", validator)
+    graph.add_node("reflect_node", reflector)
 
     graph.set_entry_point("tool_router")
     graph.add_edge("tool_router", "generate_query")
     graph.add_edge("generate_query", "execute_tool")
-    graph.add_edge("execute_tool", END)
+    graph.add_edge("execute_tool", "validate_node")
+    
+    def should_retry(state: AgentState):
+        if state.get("error") and state.get("retry_count", 0) < 2:
+            return "reflect_node"
+        return END
+
+    graph.add_conditional_edges(
+        "validate_node",
+        should_retry,
+        {
+            "reflect_node": "reflect_node",
+            END: END
+        }
+    )
+    
+    graph.add_edge("reflect_node", "generate_query")
 
     return graph.compile()
