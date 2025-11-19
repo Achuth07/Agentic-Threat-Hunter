@@ -9,6 +9,29 @@
   **Sanity test:** `SELECT version() FROM info()` returned JSON ✅
 - **At least one client online:** e.g., `C.c9be2aef833126a9` (Windows 11 Pro 24H2)
 
+## Agent-Server Connection (WSL ↔ Windows)
+The Python agent running in WSL connects to the Velociraptor server running on Windows.
+
+### Mechanism
+1.  **Config Access**: The agent reads the API configuration file directly from the Windows filesystem via the WSL mount point:
+    -   Path: `/mnt/c/Program Files/Velociraptor/api.config.yaml`
+    -   Configured in `.env`: `VELOCIRAPTOR_CONFIG="/mnt/c/Program Files/Velociraptor/api.config.yaml"`
+2.  **Network**: The agent connects to the API port `127.0.0.1:8001`.
+    -   This works because WSL 2 (especially in mirrored networking mode) can access services listening on the Windows localhost.
+
+### Verifying Connectivity
+To confirm the agent can talk to the Velociraptor server, run this Python one-liner from the `agentic-hunter` directory (ensure `hunter_env` is active or use the full path):
+
+```bash
+./hunter_env/bin/python3 -c "from dotenv import load_dotenv; load_dotenv(); from tools.velociraptor_tool import run_velociraptor_query; print(run_velociraptor_query('SELECT version() FROM info()'))"
+```
+
+**Success Output:**
+```json
+[{"version()": 0}]
+```
+If you see a JSON list with the version, the connection is established and authenticated.
+
 ## Network Bindings & URLs (from server.config.yaml)
 - **API (gRPC):** `tcp://127.0.0.1:8001`  
   - Local-only (loopback). The agent must run **on the server host** (or tunnel it).
@@ -35,6 +58,40 @@
 - **Hunt expiry:** 168 hours (7 days)
 - **Notebook cell timeout:** 10 minutes
 - **Certificate validity:** 365 days
+
+---
+
+## Service Recovery / Restart (Windows)
+
+If the Velociraptor service is not running or needs to be restarted on the Windows host, follow these steps in an **Administrator PowerShell**:
+
+### 1. Clean Up and Delete the Faulty Service
+Ensure the faulty service is entirely removed.
+```powershell
+Stop-Service Velociraptor -Force
+sc.exe delete Velociraptor
+```
+
+### 2. Define the Command String
+Define the command string as a variable to handle spaces in paths correctly.
+```powershell
+$cmd_path = '"C:\PROGRA~1\VELOCI~1\velociraptor.exe" --config "C:\PROGRA~1\VELOCI~1\server.config.yaml" frontend'
+```
+
+### 3. Create the Service
+Pass the variable to `sc.exe`.
+```powershell
+sc.exe create Velociraptor binPath= $cmd_path start= auto displayname= "Velociraptor Server"
+```
+Expected Output: `CreateService SUCCESS`
+
+### 4. Start the Service and Verify
+```powershell
+Start-Service Velociraptor
+```
+**Verification:**
+- Wait about 15 seconds.
+- Open your web browser and navigate to: `https://localhost:8889`
 
 ---
 

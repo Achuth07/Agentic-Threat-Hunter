@@ -71,11 +71,11 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
   ];
 
   const integrations = [
-    { 
-      name: 'Splunk', 
-      type: 'SIEM', 
-      status: health.splunk.connected === null ? 'unknown' : (health.splunk.connected ? 'connected' : 'disconnected'), 
-      description: health.splunk.message || 'Security Information and Event Management' 
+    {
+      name: 'Splunk',
+      type: 'SIEM',
+      status: health.splunk.connected === null ? 'unknown' : (health.splunk.connected ? 'connected' : 'disconnected'),
+      description: health.splunk.message || 'Security Information and Event Management'
     },
     {
       name: 'Velociraptor',
@@ -98,7 +98,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
     <div className="flex h-screen bg-black text-white overflow-hidden">
       {/* Mobile Menu Overlay */}
       {mobileMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
           onClick={() => setMobileMenuOpen(false)}
         />
@@ -122,7 +122,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
               <span className="text-xs text-neutral-400">Agentic AI</span>
             </div>
           )}
-          <button 
+          <button
             className="ml-auto lg:hidden"
             onClick={() => setMobileMenuOpen(false)}
           >
@@ -144,11 +144,10 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                   setActiveView(item.id);
                   setMobileMenuOpen(false);
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-all ${
-                  activeView === item.id 
-                    ? 'bg-neutral-900 text-white' 
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-all ${activeView === item.id
+                    ? 'bg-neutral-900 text-white'
                     : 'text-neutral-400 hover:bg-neutral-900 hover:text-white'
-                }`}
+                  }`}
               >
                 <Icon className="w-5 h-5 flex-shrink-0" />
                 {sidebarExpanded && <span className="text-sm font-medium">{item.label}</span>}
@@ -200,7 +199,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
         {/* Header */}
         <div className="bg-black border-b border-neutral-800 px-4 lg:px-8 py-4 lg:py-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            <button 
+            <button
               className="lg:hidden flex-shrink-0"
               onClick={() => setMobileMenuOpen(true)}
             >
@@ -226,31 +225,30 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
           <div className="flex items-center gap-2">
             {activeView === 'chat' && (
               <>
-              {/* Mobile icon-only */}
-              <button
-                onClick={onNewHunt}
-                className="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg bg-brand text-black hover:bg-brand-600 transition-colors"
-                aria-label="Start a new threat hunt"
-                title="Start a new threat hunt"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
-              {/* Desktop labeled */}
-              <button
-                onClick={onNewHunt}
-                className="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-brand text-black font-medium hover:bg-brand-600 transition-colors"
-                title="Start a new threat hunt"
-              >
-                <Plus className="w-4 h-4" />
-                <span>New Threat Hunt</span>
-              </button>
+                {/* Mobile icon-only */}
+                <button
+                  onClick={onNewHunt}
+                  className="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg bg-brand text-black hover:bg-brand-600 transition-colors"
+                  aria-label="Start a new threat hunt"
+                  title="Start a new threat hunt"
+                >
+                  <Plus className="w-5 h-5" />
+                </button>
+                {/* Desktop labeled */}
+                <button
+                  onClick={onNewHunt}
+                  className="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-brand text-black font-medium hover:bg-brand-600 transition-colors"
+                  title="Start a new threat hunt"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>New Threat Hunt</span>
+                </button>
               </>
             )}
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs ${
-              isConnected 
-                ? 'border-brand/20 bg-brand/10 text-brand' 
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs ${isConnected
+                ? 'border-brand/20 bg-brand/10 text-brand'
                 : 'border-red-500/20 bg-red-500/10 text-red-500'
-            }`}>
+              }`}>
               <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-brand' : 'bg-red-500'}`}></div>
               <span className="hidden sm:inline">{isConnected ? 'Connected' : 'Disconnected'}</span>
             </div>
@@ -362,7 +360,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
             {/* Pills row */}
             <div className="flex flex-wrap gap-2 mb-4">
               {['Outline', 'Past Performance', 'Key Personnel', 'Focus Documents'].map((p, i) => (
-                <span key={p} className={`text-xs px-2 py-1 rounded-lg border ${i===0 ? 'bg-neutral-900 text-white' : 'text-neutral-400 hover:text-white'} border-neutral-800`}>{p}</span>
+                <span key={p} className={`text-xs px-2 py-1 rounded-lg border ${i === 0 ? 'bg-neutral-900 text-white' : 'text-neutral-400 hover:text-white'} border-neutral-800`}>{p}</span>
               ))}
             </div>
 
@@ -394,7 +392,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                   <div className="flex-1">
                     <div className="bg-neutral-950 rounded-2xl p-5 border border-neutral-800">
                       <p className="text-sm text-neutral-200 leading-relaxed">
-                        Hello! I'm your AI threat hunting agent. I can help you search Splunk for security threats. 
+                        Hello! I'm your AI threat hunting agent. I can help you search Splunk for security threats.
                         Try asking me something like: <span className="text-brand font-medium">"Find failed authentication attempts in the last 24 hours"</span>
                       </p>
                     </div>
@@ -409,16 +407,14 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                       </div>
                     )}
                     <div className={`flex-1 ${msg.role === 'user' ? 'max-w-full lg:max-w-2xl' : ''}`}>
-                      <div className={`rounded-2xl p-4 lg:p-5 border ${
-                        msg.role === 'user' 
-                          ? 'bg-neutral-900 border-neutral-800' 
+                      <div className={`rounded-2xl p-4 lg:p-5 border ${msg.role === 'user'
+                          ? 'bg-neutral-900 border-neutral-800'
                           : msg.role === 'error'
-                          ? 'bg-red-500/10 border-red-500/20'
-                          : 'bg-neutral-950 border-neutral-800'
-                      }`}>
-                        <p className={`text-xs lg:text-sm leading-relaxed whitespace-pre-wrap ${
-                          msg.role === 'error' ? 'text-red-400' : 'text-neutral-200'
+                            ? 'bg-red-500/10 border-red-500/20'
+                            : 'bg-neutral-950 border-neutral-800'
                         }`}>
+                        <p className={`text-xs lg:text-sm leading-relaxed whitespace-pre-wrap ${msg.role === 'error' ? 'text-red-400' : 'text-neutral-200'
+                          }`}>
                           {msg.content}
                         </p>
                       </div>
@@ -439,8 +435,8 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                         I'm initiating a comprehensive threat hunt across all platforms. Check the agent activity monitor below for real-time progress.
                       </p>
                       <div className="bg-black rounded-xl p-4 border border-neutral-800 space-y-3">
-                          {activities.slice(-5).map((activity) => (
-                            <div key={activity.id || activity.message} className="flex items-center justify-between">
+                        {activities.slice(-5).map((activity) => (
+                          <div key={activity.id || activity.message} className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                               {activity.type === 'info' ? (
                                 <div className="animate-spin">
@@ -453,14 +449,13 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                               )}
                               <span className="text-xs text-neutral-300 font-medium">{activity.message}</span>
                             </div>
-                            <span className={`text-xs font-medium ${
-                              activity.type === 'info' ? 'text-blue-500' : 
-                              activity.type === 'success' ? 'text-brand' : 
-                              'text-red-500'
-                            }`}>
-                              {activity.type === 'info' ? 'In Progress' : 
-                               activity.type === 'success' ? 'Complete' : 
-                               'Error'}
+                            <span className={`text-xs font-medium ${activity.type === 'info' ? 'text-blue-500' :
+                                activity.type === 'success' ? 'text-brand' :
+                                  'text-red-500'
+                              }`}>
+                              {activity.type === 'info' ? 'In Progress' :
+                                activity.type === 'success' ? 'Complete' :
+                                  'Error'}
                             </span>
                           </div>
                         ))}
@@ -497,7 +492,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                   disabled={!isConnected}
                   className="flex-1 bg-neutral-950 border border-neutral-800 rounded-xl px-4 lg:px-5 py-2.5 lg:py-3 text-xs lg:text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 />
-                <button 
+                <button
                   type="submit"
                   disabled={!isConnected || !inputMessage.trim()}
                   className="bg-brand hover:bg-brand-600 text-black px-4 lg:px-6 py-2.5 lg:py-3 rounded-xl flex items-center gap-2 font-medium transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand"
@@ -513,7 +508,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                 <h3 className="text-sm lg:text-base font-semibold mb-1">Search Result Summary</h3>
                 <p className="text-xs text-neutral-500">AI-generated analysis of findings</p>
               </div>
-              
+
               {searchResults && searchResults.summary ? (
                 <div className="bg-black rounded-xl p-4 lg:p-5 border border-neutral-800">
                   <p className="text-xs lg:text-sm text-neutral-300 leading-relaxed whitespace-pre-wrap">
@@ -539,11 +534,11 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                       <div className="mb-4 lg:mb-5">
                         <h3 className="text-sm lg:text-base font-semibold mb-1">{section.title}</h3>
                         <p className="text-xs text-neutral-500">
-                          {section.count} {section.source === 'virustotal' ? 'IOC report' : 
-                           section.source === 'velociraptor' ? 'connection(s)' : 'event(s)'}
+                          {section.count} {section.source === 'virustotal' ? 'IOC report' :
+                            section.source === 'velociraptor' ? 'connection(s)' : 'event(s)'}
                         </p>
                       </div>
-                      
+
                       {section.results && section.results.length > 0 ? (
                         <div className="space-y-3">
                           {section.results.map((result, idx) => (
@@ -551,17 +546,17 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                               <div className="bg-neutral-900 px-4 lg:px-5 py-3 border-b border-neutral-800 flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                   <span className="text-xs font-semibold text-brand bg-brand/10 px-2 py-1 rounded">
-                                    {section.source === 'velociraptor' ? 'Velociraptor' : 
-                                     section.source === 'virustotal' ? 'VirusTotal' :
-                                     'Splunk'}
+                                    {section.source === 'velociraptor' ? 'Velociraptor' :
+                                      section.source === 'virustotal' ? 'VirusTotal' :
+                                        'Splunk'}
                                   </span>
                                   <span className="text-xs text-neutral-500">
-                                    {section.source === 'velociraptor' ? `Connection ${idx + 1}` : 
-                                     section.source === 'virustotal' ? `IOC Report` :
-                                     `Event ${idx + 1}`}
+                                    {section.source === 'velociraptor' ? `Connection ${idx + 1}` :
+                                      section.source === 'virustotal' ? `IOC Report` :
+                                        `Event ${idx + 1}`}
                                   </span>
                                 </div>
-                                <button 
+                                <button
                                   onClick={() => copyToClipboard(JSON.stringify(result, null, 2))}
                                   className="text-xs text-neutral-400 hover:text-white transition-colors flex items-center gap-1"
                                 >
@@ -592,16 +587,15 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                   <div className="mb-4 lg:mb-5">
                     <h3 className="text-sm lg:text-base font-semibold mb-1">Raw Search Results</h3>
                     <p className="text-xs text-neutral-500">
-                      {searchResults && searchResults.results 
-                        ? `${searchResults.results.length} ${
-                            searchResults.source === 'velociraptor' ? 'rows from Velociraptor' : 
-                            searchResults.source === 'virustotal' ? 'threat intel results from VirusTotal' :
+                      {searchResults && searchResults.results
+                        ? `${searchResults.results.length} ${searchResults.source === 'velociraptor' ? 'rows from Velociraptor' :
+                          searchResults.source === 'virustotal' ? 'threat intel results from VirusTotal' :
                             'events from Splunk'
-                          }` 
+                        }`
                         : 'Waiting for search results'}
                     </p>
                   </div>
-                  
+
                   {searchResults && searchResults.results && searchResults.results.length > 0 ? (
                     <div className="space-y-3 pb-6">
                       {searchResults.results.map((result, idx) => (
@@ -609,17 +603,17 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                           <div className="bg-neutral-900 px-4 lg:px-5 py-3 border-b border-neutral-800 flex items-center justify-between">
                             <div className="flex items-center gap-3">
                               <span className="text-xs font-semibold text-brand bg-brand/10 px-2 py-1 rounded">
-                                {searchResults.source === 'velociraptor' ? 'Velociraptor' : 
-                                 searchResults.source === 'virustotal' ? 'VirusTotal' :
-                                 'Splunk'}
+                                {searchResults.source === 'velociraptor' ? 'Velociraptor' :
+                                  searchResults.source === 'virustotal' ? 'VirusTotal' :
+                                    'Splunk'}
                               </span>
                               <span className="text-xs text-neutral-500">
-                                {searchResults.source === 'velociraptor' ? `Row ${idx + 1}` : 
-                                 searchResults.source === 'virustotal' ? `IOC Report` :
-                                 `Event ${idx + 1}`}
+                                {searchResults.source === 'velociraptor' ? `Row ${idx + 1}` :
+                                  searchResults.source === 'virustotal' ? `IOC Report` :
+                                    `Event ${idx + 1}`}
                               </span>
                             </div>
-                            <button 
+                            <button
                               onClick={() => copyToClipboard(JSON.stringify(result, null, 2))}
                               className="text-xs text-neutral-400 hover:text-white transition-colors flex items-center gap-1"
                             >
@@ -660,13 +654,12 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                 activities.map((activity, idx) => (
                   <div key={idx} className="bg-neutral-950 rounded-xl border border-neutral-800 p-4 lg:p-5">
                     <div className="flex items-start gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                        activity.type === 'error' 
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${activity.type === 'error'
                           ? 'bg-red-500/10 text-red-500'
                           : activity.type === 'success'
-                          ? 'bg-brand/10 text-brand'
-                          : 'bg-blue-500/10 text-blue-500'
-                      }`}>
+                            ? 'bg-brand/10 text-brand'
+                            : 'bg-blue-500/10 text-blue-500'
+                        }`}>
                         {activity.type === 'error' && <AlertCircle className="w-4 h-4" />}
                         {activity.type === 'success' && <CheckCircle2 className="w-4 h-4" />}
                         {activity.type === 'info' && <Clock className="w-4 h-4" />}
@@ -700,11 +693,10 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
               <button
                 onClick={() => checkHealth()}
                 disabled={health.checking}
-                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-                  health.checking
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${health.checking
                     ? 'border-neutral-800 text-neutral-600 cursor-not-allowed'
                     : 'border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700'
-                }`}
+                  }`}
               >
                 {health.checking ? 'Checking…' : 'Refresh all'}
               </button>
@@ -717,13 +709,12 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                       <h3 className="font-semibold text-sm lg:text-base mb-1 lg:mb-1.5 truncate">{platform.name}</h3>
                       <p className="text-xs lg:text-sm text-neutral-400 line-clamp-2">{platform.description}</p>
                     </div>
-                    <span className={`text-xs px-2 lg:px-3 py-1 lg:py-1.5 rounded-full font-medium whitespace-nowrap flex-shrink-0 ${
-                      platform.status === 'connected'
+                    <span className={`text-xs px-2 lg:px-3 py-1 lg:py-1.5 rounded-full font-medium whitespace-nowrap flex-shrink-0 ${platform.status === 'connected'
                         ? 'bg-brand/10 text-brand border border-brand/20'
                         : platform.status === 'unknown'
-                        ? 'bg-neutral-900 text-neutral-400 border border-neutral-700'
-                        : 'bg-red-500/10 text-red-500 border border-red-500/20'
-                    }`}>
+                          ? 'bg-neutral-900 text-neutral-400 border border-neutral-700'
+                          : 'bg-red-500/10 text-red-500 border border-red-500/20'
+                      }`}>
                       {platform.status}
                     </span>
                   </div>
@@ -735,11 +726,10 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                       <button
                         onClick={() => checkHealth(platform.name.toLowerCase())}
                         disabled={health.checking}
-                        className={`text-xs px-2 lg:px-3 py-1 lg:py-1.5 rounded-lg border transition-colors ${
-                          health.checking
+                        className={`text-xs px-2 lg:px-3 py-1 lg:py-1.5 rounded-lg border transition-colors ${health.checking
                             ? 'border-neutral-800 text-neutral-600 cursor-not-allowed'
                             : 'border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700'
-                        }`}
+                          }`}
                       >
                         {health.checking ? 'Checking…' : 'Check health'}
                       </button>
@@ -755,13 +745,12 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                         </div>
                         <div className="flex items-center justify-between mt-2">
                           <span className="text-neutral-500">Config exists</span>
-                          <span className={`${
-                            platform.configExists === true
+                          <span className={`${platform.configExists === true
                               ? 'text-brand'
                               : platform.configExists === false
-                              ? 'text-red-500'
-                              : 'text-neutral-400'
-                          }`}>
+                                ? 'text-red-500'
+                                : 'text-neutral-400'
+                            }`}>
                             {platform.configExists === true ? 'Yes' : platform.configExists === false ? 'No' : 'Unknown'}
                           </span>
                         </div>
@@ -863,13 +852,16 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                     <label className="text-xs lg:text-sm font-medium text-neutral-300 mb-2 block">
                       Splunk Query Generation Model
                     </label>
-                    <input
-                      type="text"
+                    <select
                       value={settings.splModel}
                       onChange={(e) => onUpdateSettings({ splModel: e.target.value })}
-                      placeholder="splunk_hunter"
-                      className="w-full bg-black border border-neutral-800 rounded-lg px-3 lg:px-4 py-2 lg:py-2.5 text-xs lg:text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-brand transition-colors"
-                    />
+                      className="w-full bg-black border border-neutral-800 rounded-lg px-3 lg:px-4 py-2 lg:py-2.5 text-xs lg:text-sm text-white focus:outline-none focus:border-brand transition-colors"
+                    >
+                      <option value="splunk_hunter">splunk_hunter (Default)</option>
+                      <option value="velociraptor_hunter">velociraptor_hunter</option>
+                      <option value="llama3:8b">llama3:8b</option>
+                      <option value="qwen2.5-coder:7b">qwen2.5-coder:7b</option>
+                    </select>
                     <p className="text-xs text-neutral-500 mt-1.5">
                       Ollama model for generating SPL queries
                     </p>
@@ -880,13 +872,16 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                     <label className="text-xs lg:text-sm font-medium text-neutral-300 mb-2 block">
                       Velociraptor Query Generation Model
                     </label>
-                    <input
-                      type="text"
+                    <select
                       value={settings.vqlModel}
                       onChange={(e) => onUpdateSettings({ vqlModel: e.target.value })}
-                      placeholder="velociraptor_hunter"
-                      className="w-full bg-black border border-neutral-800 rounded-lg px-3 lg:px-4 py-2 lg:py-2.5 text-xs lg:text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-brand transition-colors"
-                    />
+                      className="w-full bg-black border border-neutral-800 rounded-lg px-3 lg:px-4 py-2 lg:py-2.5 text-xs lg:text-sm text-white focus:outline-none focus:border-brand transition-colors"
+                    >
+                      <option value="velociraptor_hunter">velociraptor_hunter (Default)</option>
+                      <option value="splunk_hunter">splunk_hunter</option>
+                      <option value="llama3:8b">llama3:8b</option>
+                      <option value="qwen2.5-coder:7b">qwen2.5-coder:7b</option>
+                    </select>
                     <p className="text-xs text-neutral-500 mt-1.5">
                       Ollama model for generating VQL queries
                     </p>
@@ -897,13 +892,16 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                     <label className="text-xs lg:text-sm font-medium text-neutral-300 mb-2 block">
                       Summary Generation Model
                     </label>
-                    <input
-                      type="text"
+                    <select
                       value={settings.summaryModel}
                       onChange={(e) => onUpdateSettings({ summaryModel: e.target.value })}
-                      placeholder="llama3:8b"
-                      className="w-full bg-black border border-neutral-800 rounded-lg px-3 lg:px-4 py-2 lg:py-2.5 text-xs lg:text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-brand transition-colors"
-                    />
+                      className="w-full bg-black border border-neutral-800 rounded-lg px-3 lg:px-4 py-2 lg:py-2.5 text-xs lg:text-sm text-white focus:outline-none focus:border-brand transition-colors"
+                    >
+                      <option value="llama3:8b">llama3:8b (Default)</option>
+                      <option value="splunk_hunter">splunk_hunter</option>
+                      <option value="velociraptor_hunter">velociraptor_hunter</option>
+                      <option value="qwen2.5-coder:7b">qwen2.5-coder:7b</option>
+                    </select>
                     <p className="text-xs text-neutral-500 mt-1.5">
                       Ollama model for summarizing search results
                     </p>
