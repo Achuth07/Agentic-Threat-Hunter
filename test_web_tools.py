@@ -1,8 +1,11 @@
 import asyncio
 import os
+from dotenv import load_dotenv
 from tools.web_tools import web_search, visit_page
 from agent.multitool_agent import build_multitool_graph
 from langchain_core.messages import HumanMessage
+
+load_dotenv()
 
 # Mock functions for Splunk and Velociraptor to avoid needing real connections
 def mock_splunk(query):

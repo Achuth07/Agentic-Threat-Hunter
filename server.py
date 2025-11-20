@@ -548,38 +548,27 @@ def health_virustotal():
 
 @app.get("/health/atomicredteam")
 def health_atomicredteam():
-    """Quick health check for Atomic Red Team availability."""
+    """Quick health check for Atomic Red Team module availability."""
     try:
-        # Check if we're on Windows and if PowerShell is available
-        import platform
-        if platform.system() != "Windows":
-            return {
-                "connected": False,
-                "message": "Atomic Red Team requires Windows OS",
-                "platform": platform.system(),
-            }
-        
-        # Check if Invoke-AtomicRedTeam module is available
-        import subprocess
-        import_cmd = "Import-Module 'C:\\AtomicRedTeam\\invoke-atomicredteam\\Invoke-AtomicRedTeam.psd1' -ErrorAction SilentlyContinue; Get-Module Invoke-AtomicRedTeam"
-        cmd = ["powershell.exe", "-ExecutionPolicy", "Bypass", "-Command", import_cmd]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=5)
-        
-        if "Invoke-AtomicRedTeam" in result.stdout:
+        from tools.atomic_red_team import AtomicRedTeamTool
+        art_tool = AtomicRedTeamTool()
+        # Check if the module is available
+        if art_tool._check_prerequisites():
             return {
                 "connected": True,
-                "message": "Invoke-AtomicRedTeam module is available",
+                "message": "Invoke-AtomicRedTeam module found and accessible",
             }
         else:
             return {
                 "connected": False,
-                "message": "Invoke-AtomicRedTeam module not found. Please install it.",
+                "message": "Invoke-AtomicRedTeam module not found. Please install it on the Windows host.",
             }
     except Exception as e:
         return {
             "connected": False,
-            "message": str(e),
+            "message": f"Error checking Atomic Red Team: {str(e)}",
         }
+
 
 
 @app.get("/health/sigma")
@@ -1027,6 +1016,15 @@ async def ws_chat(websocket: WebSocket):
                         "detail": error,
                     })
                     continue
+
+                # Mark tool execution as complete
+                await websocket.send_json({
+                    "type": "activity",
+                    "title": "Executing tool",
+                    "detail": f"Completed {tool_choice}",
+                    "status": "done",
+                    "icon": "bolt",
+                })
 
                 # Summarize results
                 await websocket.send_json({

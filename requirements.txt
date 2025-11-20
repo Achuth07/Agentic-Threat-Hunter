@@ -64,7 +64,7 @@ uvicorn[standard]==0.32.0
 pyvelociraptor>=0.1.11,<0.2.0
 
 # Web Browsing
-duckduckgo-search==6.3.1
+tavily-python==0.3.3
 beautifulsoup4==4.12.3
 
 # Sigma Rules
