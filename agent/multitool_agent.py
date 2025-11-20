@@ -7,14 +7,18 @@ from langgraph.graph import StateGraph, END
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
 from tools.web_tools import web_search, visit_page
+from tools.atomic_red_team import AtomicRedTeamTool
 
 class AgentState(TypedDict):
     user_query: str
-    tool_choice: Optional[Literal["execute_splunk_search", "run_velociraptor_query", "web_search", "visit_page"]]
+    tool_choice: Optional[Literal["execute_splunk_search", "run_velociraptor_query", "web_search", "visit_page", "atomic_red_team"]]
     spl_query: Optional[str]
     vql_query: Optional[str]
     web_query: Optional[str]
+    vql_query: Optional[str]
+    web_query: Optional[str]
     web_url: Optional[str]
+    atomic_query: Optional[str]
     results: Any
     error: Optional[str]
     retry_count: int
@@ -41,15 +45,20 @@ Tools (choose one):
 - visit_page
   Purpose: Visit a specific URL to extract its content. Use when the user provides a URL and asks to summarize, read, or analyze it.
 
+- atomic_red_team
+  Purpose: Execute Atomic Red Team tests to simulate attacks. Use when the user asks to "run test Txxxx", "simulate attack", "execute atomic test", or "list atomic tests".
+
 Routing rules:
 1) Endpoint/system state (processes, listening ports, basic computer info, local users, files, prefetch, registry) -> run_velociraptor_query.
 2) Logs/SIEM analytics (EventID, sourcetype, index=, SPL, dashboards, trends) -> execute_splunk_search.
 3) Mentions "on host/computer X" for current state -> run_velociraptor_query.
 4) Mentions "in Splunk" or uses SPL tokens (index=, tstats, mstats) -> execute_splunk_search.
 5) Research questions (e.g., "Who is the CEO of Splunk?", "What is CVE-2024-1234?") -> web_search.
+5) Research questions (e.g., "Who is the CEO of Splunk?", "What is CVE-2024-1234?") -> web_search.
 6) Requests to read/summarize a URL -> visit_page.
+7) Requests to run/list atomic tests/attacks -> atomic_red_team.
 
-Output format: EXACTLY one of execute_splunk_search OR run_velociraptor_query OR web_search OR visit_page (no punctuation or extra words).
+Output format: EXACTLY one of execute_splunk_search OR run_velociraptor_query OR web_search OR visit_page OR atomic_red_team (no punctuation or extra words).
 """,
         ),
         ("human", "{question}"),
@@ -60,7 +69,7 @@ Output format: EXACTLY one of execute_splunk_search OR run_velociraptor_query OR
         messages = prompt.format_messages(question=state["user_query"])
         msg = llm.invoke(messages)
         choice = (msg.content or "").strip()
-        if choice not in {"execute_splunk_search", "run_velociraptor_query", "web_search", "visit_page"}:
+        if choice not in {"execute_splunk_search", "run_velociraptor_query", "web_search", "visit_page", "atomic_red_team"}:
             # Fallback to splunk if ambiguous
             choice = "execute_splunk_search"
         return {"tool_choice": choice, "retry_count": 0, "error": None}
@@ -105,8 +114,32 @@ If you are retrying due to an error, analyze the previous error and fix the quer
     # Simple pass-through for web search query optimization if needed, 
     # but for now we just use the user query or simple extraction.
     
+    atomic_prompt = ChatPromptTemplate.from_messages([
+        (
+            "system",
+            """
+You convert a user's request to run an Atomic Red Team test into a JSON string for the tool.
+Output ONLY the JSON.
+Format:
+{{
+  "action": "execute_test" | "list_tests",
+  "technique_id": "Txxxx" (optional, required for execute_test),
+  "test_number": 1 (optional, default to 1 if not specified but implied)
+}}
+
+Examples:
+- "List atomic tests" -> {{"action": "list_tests"}}
+- "Run T1033" -> {{"action": "execute_test", "technique_id": "T1033"}}
+- "Execute test 2 of T1003" -> {{"action": "execute_test", "technique_id": "T1003", "test_number": 2}}
+""",
+        ),
+        ("placeholder", "{messages}"),
+        ("human", "{question}"),
+    ])
+
     spl_llm = ChatOllama(model=spl_model)
     vql_llm = ChatOllama(model=vql_model or spl_model)
+    atomic_llm = ChatOllama(model=vql_model or spl_model) # Use same model as VQL/SPL
 
     def generate(state: AgentState) -> AgentState:
         tool = state.get("tool_choice") or "execute_splunk_search"
@@ -127,6 +160,15 @@ If you are retrying due to an error, analyze the previous error and fix the quer
             url_match = re.search(r"https?://[^\s]+", q)
             url = url_match.group(0) if url_match else ""
             return {"web_url": url}
+        elif tool == "atomic_red_team":
+            msg = atomic_llm.invoke(atomic_prompt.format_messages(question=q, messages=history))
+            # Clean up json markdown if present
+            content = (msg.content or "").strip()
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.endswith("```"):
+                content = content[:-3]
+            return {"atomic_query": content.strip()}
         else:
             msg = spl_llm.invoke(spl_prompt.format_messages(question=q, messages=history))
             spl = (msg.content or "").strip().replace("`", "").strip("\"'")
@@ -161,6 +203,20 @@ def build_executor_node(
                 return {"results": content, "error": None}
             except Exception as e:
                 return {"results": None, "error": f"Visit page error: {str(e)}"}
+
+        elif tool == "atomic_red_team":
+            query = state.get("atomic_query")
+            if not query:
+                 return {"results": None, "error": "No query generated for atomic_red_team."}
+            try:
+                art_tool = AtomicRedTeamTool()
+                res = art_tool._run(query)
+                # If the result starts with "Error:", treat it as an error
+                if res.startswith("Error:"):
+                    return {"results": None, "error": res}
+                return {"results": res, "error": None}
+            except Exception as e:
+                return {"results": None, "error": f"Atomic Red Team error: {str(e)}"}
 
         elif tool == "run_velociraptor_query":
             vql = state.get("vql_query") or "SELECT * FROM pslist();"
@@ -231,6 +287,8 @@ Be concise.
             query = state.get("web_url")
         elif tool == "run_velociraptor_query":
             query = state.get("vql_query")
+        elif tool == "atomic_red_team":
+            query = state.get("atomic_query")
         else:
             query = state.get("spl_query")
             
