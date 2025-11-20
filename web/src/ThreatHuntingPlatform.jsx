@@ -11,6 +11,8 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
     splunk: { connected: null, message: '' },
     velociraptor: { connected: null, message: '', config: '', config_exists: null },
     virustotal: { connected: null, message: '' },
+    atomicredteam: { connected: null, message: '' },
+    sigma: { connected: null, message: '', rule_count: 0 },
     checking: false,
   });
   const messagesEndRef = useRef(null);
@@ -44,7 +46,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
   const checkHealth = async (which) => {
     try {
       setHealth((prev) => ({ ...prev, checking: true }));
-      const targets = which ? [which] : ['splunk', 'velociraptor', 'virustotal'];
+      const targets = which ? [which] : ['splunk', 'velociraptor', 'virustotal', 'atomicredteam', 'sigma'];
       for (const t of targets) {
         const res = await fetch(`/health/${t}`);
         const json = await res.json();
@@ -90,6 +92,19 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
       type: 'Threat Intel',
       status: health.virustotal.connected === null ? 'unknown' : (health.virustotal.connected ? 'connected' : 'disconnected'),
       description: health.virustotal.message || 'IOC reputation and malware analysis',
+    },
+    {
+      name: 'Atomic Red Team',
+      type: 'Attack Simulation',
+      status: health.atomicredteam.connected === null ? 'unknown' : (health.atomicredteam.connected ? 'connected' : 'disconnected'),
+      description: health.atomicredteam.message || 'Adversary emulation and attack simulation',
+    },
+    {
+      name: 'Sigma Rules',
+      type: 'Detection Rules',
+      status: health.sigma.connected === null ? 'unknown' : (health.sigma.connected ? 'connected' : 'disconnected'),
+      description: health.sigma.message || 'Community threat detection rules',
+      ruleCount: health.sigma.rule_count,
     }
   ];
   const llmIntegration = { name: 'LLaMA3:8b via Ollama', status: isConnected ? 'connected' : 'disconnected' };
@@ -145,8 +160,8 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                   setMobileMenuOpen(false);
                 }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-all ${activeView === item.id
-                    ? 'bg-neutral-900 text-white'
-                    : 'text-neutral-400 hover:bg-neutral-900 hover:text-white'
+                  ? 'bg-neutral-900 text-white'
+                  : 'text-neutral-400 hover:bg-neutral-900 hover:text-white'
                   }`}
               >
                 <Icon className="w-5 h-5 flex-shrink-0" />
@@ -246,8 +261,8 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
               </>
             )}
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs ${isConnected
-                ? 'border-brand/20 bg-brand/10 text-brand'
-                : 'border-red-500/20 bg-red-500/10 text-red-500'
+              ? 'border-brand/20 bg-brand/10 text-brand'
+              : 'border-red-500/20 bg-red-500/10 text-red-500'
               }`}>
               <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-brand' : 'bg-red-500'}`}></div>
               <span className="hidden sm:inline">{isConnected ? 'Connected' : 'Disconnected'}</span>
@@ -408,10 +423,10 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                     )}
                     <div className={`flex-1 ${msg.role === 'user' ? 'max-w-full lg:max-w-2xl' : ''}`}>
                       <div className={`rounded-2xl p-4 lg:p-5 border ${msg.role === 'user'
-                          ? 'bg-neutral-900 border-neutral-800'
-                          : msg.role === 'error'
-                            ? 'bg-red-500/10 border-red-500/20'
-                            : 'bg-neutral-950 border-neutral-800'
+                        ? 'bg-neutral-900 border-neutral-800'
+                        : msg.role === 'error'
+                          ? 'bg-red-500/10 border-red-500/20'
+                          : 'bg-neutral-950 border-neutral-800'
                         }`}>
                         <p className={`text-xs lg:text-sm leading-relaxed whitespace-pre-wrap ${msg.role === 'error' ? 'text-red-400' : 'text-neutral-200'
                           }`}>
@@ -450,8 +465,8 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                               <span className="text-xs text-neutral-300 font-medium">{activity.message}</span>
                             </div>
                             <span className={`text-xs font-medium ${activity.type === 'info' ? 'text-blue-500' :
-                                activity.type === 'success' ? 'text-brand' :
-                                  'text-red-500'
+                              activity.type === 'success' ? 'text-brand' :
+                                'text-red-500'
                               }`}>
                               {activity.type === 'info' ? 'In Progress' :
                                 activity.type === 'success' ? 'Complete' :
@@ -655,10 +670,10 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                   <div key={idx} className="bg-neutral-950 rounded-xl border border-neutral-800 p-4 lg:p-5">
                     <div className="flex items-start gap-3">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${activity.type === 'error'
-                          ? 'bg-red-500/10 text-red-500'
-                          : activity.type === 'success'
-                            ? 'bg-brand/10 text-brand'
-                            : 'bg-blue-500/10 text-blue-500'
+                        ? 'bg-red-500/10 text-red-500'
+                        : activity.type === 'success'
+                          ? 'bg-brand/10 text-brand'
+                          : 'bg-blue-500/10 text-blue-500'
                         }`}>
                         {activity.type === 'error' && <AlertCircle className="w-4 h-4" />}
                         {activity.type === 'success' && <CheckCircle2 className="w-4 h-4" />}
@@ -694,8 +709,8 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                 onClick={() => checkHealth()}
                 disabled={health.checking}
                 className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${health.checking
-                    ? 'border-neutral-800 text-neutral-600 cursor-not-allowed'
-                    : 'border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700'
+                  ? 'border-neutral-800 text-neutral-600 cursor-not-allowed'
+                  : 'border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700'
                   }`}
               >
                 {health.checking ? 'Checking…' : 'Refresh all'}
@@ -710,10 +725,10 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                       <p className="text-xs lg:text-sm text-neutral-400 line-clamp-2">{platform.description}</p>
                     </div>
                     <span className={`text-xs px-2 lg:px-3 py-1 lg:py-1.5 rounded-full font-medium whitespace-nowrap flex-shrink-0 ${platform.status === 'connected'
-                        ? 'bg-brand/10 text-brand border border-brand/20'
-                        : platform.status === 'unknown'
-                          ? 'bg-neutral-900 text-neutral-400 border border-neutral-700'
-                          : 'bg-red-500/10 text-red-500 border border-red-500/20'
+                      ? 'bg-brand/10 text-brand border border-brand/20'
+                      : platform.status === 'unknown'
+                        ? 'bg-neutral-900 text-neutral-400 border border-neutral-700'
+                        : 'bg-red-500/10 text-red-500 border border-red-500/20'
                       }`}>
                       {platform.status}
                     </span>
@@ -727,8 +742,8 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                         onClick={() => checkHealth(platform.name.toLowerCase())}
                         disabled={health.checking}
                         className={`text-xs px-2 lg:px-3 py-1 lg:py-1.5 rounded-lg border transition-colors ${health.checking
-                            ? 'border-neutral-800 text-neutral-600 cursor-not-allowed'
-                            : 'border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700'
+                          ? 'border-neutral-800 text-neutral-600 cursor-not-allowed'
+                          : 'border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700'
                           }`}
                       >
                         {health.checking ? 'Checking…' : 'Check health'}
@@ -746,12 +761,23 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                         <div className="flex items-center justify-between mt-2">
                           <span className="text-neutral-500">Config exists</span>
                           <span className={`${platform.configExists === true
-                              ? 'text-brand'
-                              : platform.configExists === false
-                                ? 'text-red-500'
-                                : 'text-neutral-400'
+                            ? 'text-brand'
+                            : platform.configExists === false
+                              ? 'text-red-500'
+                              : 'text-neutral-400'
                             }`}>
                             {platform.configExists === true ? 'Yes' : platform.configExists === false ? 'No' : 'Unknown'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {platform.name === 'Sigma Rules' && platform.ruleCount > 0 && (
+                      <div className="text-xs text-neutral-400 bg-black rounded-xl border border-neutral-800 p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-neutral-500">Available rules</span>
+                          <span className="text-brand font-medium">
+                            {platform.ruleCount.toLocaleString()}
                           </span>
                         </div>
                       </div>

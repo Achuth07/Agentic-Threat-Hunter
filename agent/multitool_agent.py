@@ -8,10 +8,11 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
 from tools.web_tools import web_search, visit_page
 from tools.atomic_red_team import AtomicRedTeamTool
+from tools.sigma_tool import SigmaTool
 
 class AgentState(TypedDict):
     user_query: str
-    tool_choice: Optional[Literal["execute_splunk_search", "run_velociraptor_query", "web_search", "visit_page", "atomic_red_team"]]
+    tool_choice: Optional[Literal["execute_splunk_search", "run_velociraptor_query", "web_search", "visit_page", "atomic_red_team", "sigma_rule"]]
     spl_query: Optional[str]
     vql_query: Optional[str]
     web_query: Optional[str]
@@ -19,6 +20,7 @@ class AgentState(TypedDict):
     web_query: Optional[str]
     web_url: Optional[str]
     atomic_query: Optional[str]
+    sigma_query: Optional[str]
     results: Any
     error: Optional[str]
     retry_count: int
@@ -46,7 +48,10 @@ Tools (choose one):
   Purpose: Visit a specific URL to extract its content. Use when the user provides a URL and asks to summarize, read, or analyze it.
 
 - atomic_red_team
-  Purpose: Execute Atomic Red Team tests to simulate attacks. Use when the user asks to "run test Txxxx", "simulate attack", "execute atomic test", or "list atomic tests".
+   Purpose: Execute Atomic Red Team tests to simulate attacks. Use when the user asks to "run test Txxxx", "simulate attack", "execute atomic test", or "list atomic tests".
+
+- sigma_rule
+   Purpose: Search, parse, and convert Sigma detection rules to SPL or VQL. Use when the user asks about "sigma rules", "detection rules", "convert sigma", "list sigma rules", or mentions specific Sigma rule IDs.
 
 Routing rules:
 1) Endpoint/system state (processes, listening ports, basic computer info, local users, files, prefetch, registry) -> run_velociraptor_query.
@@ -57,19 +62,20 @@ Routing rules:
 5) Research questions (e.g., "Who is the CEO of Splunk?", "What is CVE-2024-1234?") -> web_search.
 6) Requests to read/summarize a URL -> visit_page.
 7) Requests to run/list atomic tests/attacks -> atomic_red_team.
+8) Requests about Sigma rules, detection rules, or converting Sigma to SPL/VQL -> sigma_rule.
 
-Output format: EXACTLY one of execute_splunk_search OR run_velociraptor_query OR web_search OR visit_page OR atomic_red_team (no punctuation or extra words).
+Output format: EXACTLY one of execute_splunk_search OR run_velociraptor_query OR web_search OR visit_page OR atomic_red_team OR sigma_rule (no punctuation or extra words).
 """,
         ),
         ("human", "{question}"),
     ])
     llm = ChatOllama(model=model_name)
 
-    def router(state: AgentState) -> AgentState:
+    async def router(state: AgentState) -> AgentState:
         messages = prompt.format_messages(question=state["user_query"])
-        msg = llm.invoke(messages)
+        msg = await llm.ainvoke(messages)
         choice = (msg.content or "").strip()
-        if choice not in {"execute_splunk_search", "run_velociraptor_query", "web_search", "visit_page", "atomic_red_team"}:
+        if choice not in {"execute_splunk_search", "run_velociraptor_query", "web_search", "visit_page", "atomic_red_team", "sigma_rule"}:
             # Fallback to splunk if ambiguous
             choice = "execute_splunk_search"
         return {"tool_choice": choice, "retry_count": 0, "error": None}
@@ -136,18 +142,45 @@ Examples:
         ("placeholder", "{messages}"),
         ("human", "{question}"),
     ])
+    
+    sigma_prompt = ChatPromptTemplate.from_messages([
+        (
+            "system",
+            """
+You convert a user's request about Sigma rules into a JSON string for the tool.
+Output ONLY the JSON.
+Format:
+{{
+  "action": "list_rules" | "get_rule" | "convert_to_spl" | "convert_to_vql" | "search_rules",
+  "rule_id": "rule_id_or_filename" (optional, required for get_rule/convert_*),
+  "category": "process_creation" (optional, for list_rules),
+  "technique_id": "T1055" (optional, for list_rules),
+  "query": "search terms" (optional, required for search_rules)
+}}
+
+Examples:
+- "List sigma rules" -> {{"action": "list_rules"}}
+- "Show sigma rules for lateral movement" -> {{"action": "search_rules", "query": "lateral movement"}}
+- "Convert sigma rule proc_creation_win_susp_psexec to SPL" -> {{"action": "convert_to_spl", "rule_id": "proc_creation_win_susp_psexec"}}
+- "Get details for rule T1055" -> {{"action": "search_rules", "query": "T1055"}}
+""",
+        ),
+        ("placeholder", "{messages}"),
+        ("human", "{question}"),
+    ])
 
     spl_llm = ChatOllama(model=spl_model)
     vql_llm = ChatOllama(model=vql_model or spl_model)
     atomic_llm = ChatOllama(model=vql_model or spl_model) # Use same model as VQL/SPL
+    sigma_llm = ChatOllama(model=vql_model or spl_model) # Use same model as VQL/SPL
 
-    def generate(state: AgentState) -> AgentState:
+    async def generate(state: AgentState) -> AgentState:
         tool = state.get("tool_choice") or "execute_splunk_search"
         q = state["user_query"]
         history = state.get("messages") or []
         
         if tool == "run_velociraptor_query":
-            msg = vql_llm.invoke(vql_prompt.format_messages(question=q, messages=history))
+            msg = await vql_llm.ainvoke(vql_prompt.format_messages(question=q, messages=history))
             vql = (msg.content or "").strip().strip("`\"")
             return {"vql_query": vql}
         elif tool == "web_search":
@@ -161,7 +194,7 @@ Examples:
             url = url_match.group(0) if url_match else ""
             return {"web_url": url}
         elif tool == "atomic_red_team":
-            msg = atomic_llm.invoke(atomic_prompt.format_messages(question=q, messages=history))
+            msg = await atomic_llm.ainvoke(atomic_prompt.format_messages(question=q, messages=history))
             # Clean up json markdown if present
             content = (msg.content or "").strip()
             if content.startswith("```json"):
@@ -169,8 +202,17 @@ Examples:
             if content.endswith("```"):
                 content = content[:-3]
             return {"atomic_query": content.strip()}
+        elif tool == "sigma_rule":
+            msg = await sigma_llm.ainvoke(sigma_prompt.format_messages(question=q, messages=history))
+            # Clean up json markdown if present
+            content = (msg.content or "").strip()
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.endswith("```"):
+                content = content[:-3]
+            return {"sigma_query": content.strip()}
         else:
-            msg = spl_llm.invoke(spl_prompt.format_messages(question=q, messages=history))
+            msg = await spl_llm.ainvoke(spl_prompt.format_messages(question=q, messages=history))
             spl = (msg.content or "").strip().replace("`", "").strip("\"'")
             return {"spl_query": spl}
 
@@ -182,14 +224,17 @@ def build_executor_node(
     velociraptor_fn: Callable[[str], str],
 ):
     import json
+    import asyncio
+    import inspect
 
-    def execute(state: AgentState) -> AgentState:
+    async def execute(state: AgentState) -> AgentState:
         tool = state.get("tool_choice") or "execute_splunk_search"
         
         if tool == "web_search":
             q = state.get("web_query") or state["user_query"]
             try:
-                res = web_search(q)
+                # web_search is blocking, run in thread
+                res = await asyncio.to_thread(web_search, q)
                 return {"results": res, "error": None}
             except Exception as e:
                 return {"results": None, "error": f"Web search error: {str(e)}"}
@@ -199,7 +244,8 @@ def build_executor_node(
             if not url:
                  return {"results": None, "error": "No URL found in query for visit_page tool."}
             try:
-                content = visit_page(url)
+                # visit_page is blocking, run in thread
+                content = await asyncio.to_thread(visit_page, url)
                 return {"results": content, "error": None}
             except Exception as e:
                 return {"results": None, "error": f"Visit page error: {str(e)}"}
@@ -210,18 +256,42 @@ def build_executor_node(
                  return {"results": None, "error": "No query generated for atomic_red_team."}
             try:
                 art_tool = AtomicRedTeamTool()
-                res = art_tool._run(query)
+                # Run in thread as it may be blocking
+                res = await asyncio.to_thread(art_tool._run, query)
                 # If the result starts with "Error:", treat it as an error
                 if res.startswith("Error:"):
                     return {"results": None, "error": res}
                 return {"results": res, "error": None}
             except Exception as e:
                 return {"results": None, "error": f"Atomic Red Team error: {str(e)}"}
+        
+        elif tool == "sigma_rule":
+            query = state.get("sigma_query")
+            if not query:
+                 return {"results": None, "error": "No query generated for sigma_rule."}
+            try:
+                sigma_tool = SigmaTool()
+                # Run in thread as it may be blocking
+                res = await asyncio.to_thread(sigma_tool._run, query)
+                # Parse the JSON response to check for errors
+                try:
+                    res_data = json.loads(res)
+                    if "error" in res_data:
+                        return {"results": None, "error": res_data["error"]}
+                except:
+                    pass
+                return {"results": res, "error": None}
+            except Exception as e:
+                return {"results": None, "error": f"Sigma tool error: {str(e)}"}
 
         elif tool == "run_velociraptor_query":
             vql = state.get("vql_query") or "SELECT * FROM pslist();"
             try:
-                raw = velociraptor_fn(vql)
+                # Check if velociraptor_fn is async or sync
+                if inspect.iscoroutinefunction(velociraptor_fn):
+                    raw = await velociraptor_fn(vql)
+                else:
+                    raw = await asyncio.to_thread(velociraptor_fn, vql)
                 try:
                     results = json.loads(raw)
                     # Check for Velociraptor specific error structure
@@ -235,7 +305,11 @@ def build_executor_node(
         else:
             spl = state.get("spl_query") or "index=main | head 5"
             try:
-                results = splunk_execute_fn(spl)
+                # Check if splunk_execute_fn is async or sync
+                if inspect.iscoroutinefunction(splunk_execute_fn):
+                    results = await splunk_execute_fn(spl)
+                else:
+                    results = await asyncio.to_thread(splunk_execute_fn, spl)
                 # Check if it returns a string error
                 if isinstance(results, str) and ("Error" in results or "Exception" in results):
                      return {"results": [], "error": results}
@@ -255,7 +329,7 @@ def build_executor_node(
 
 
 def build_validate_node():
-    def validate(state: AgentState) -> AgentState:
+    async def validate(state: AgentState) -> AgentState:
         # This node is a pass-through to allow the conditional edge to check state
         # The executor already sets 'error' if it catches one.
         # We could add more complex validation here (e.g. empty results = error?)
@@ -278,7 +352,7 @@ Be concise.
     ])
     llm = ChatOllama(model=model_name)
 
-    def reflect(state: AgentState) -> AgentState:
+    async def reflect(state: AgentState) -> AgentState:
         tool = state.get("tool_choice")
         
         if tool == "web_search":
@@ -289,6 +363,8 @@ Be concise.
             query = state.get("vql_query")
         elif tool == "atomic_red_team":
             query = state.get("atomic_query")
+        elif tool == "sigma_rule":
+            query = state.get("sigma_query")
         else:
             query = state.get("spl_query")
             
@@ -300,7 +376,7 @@ Be concise.
             query=query,
             error=error
         )
-        msg = llm.invoke(messages)
+        msg = await llm.ainvoke(messages)
         reflection = msg.content
         
         # Update history with the error and reflection to guide the next generation

@@ -546,6 +546,108 @@ def health_virustotal():
         }
 
 
+@app.get("/health/atomicredteam")
+def health_atomicredteam():
+    """Quick health check for Atomic Red Team availability."""
+    try:
+        # Check if we're on Windows and if PowerShell is available
+        import platform
+        if platform.system() != "Windows":
+            return {
+                "connected": False,
+                "message": "Atomic Red Team requires Windows OS",
+                "platform": platform.system(),
+            }
+        
+        # Check if Invoke-AtomicRedTeam module is available
+        import subprocess
+        import_cmd = "Import-Module 'C:\\AtomicRedTeam\\invoke-atomicredteam\\Invoke-AtomicRedTeam.psd1' -ErrorAction SilentlyContinue; Get-Module Invoke-AtomicRedTeam"
+        cmd = ["powershell.exe", "-ExecutionPolicy", "Bypass", "-Command", import_cmd]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=5)
+        
+        if "Invoke-AtomicRedTeam" in result.stdout:
+            return {
+                "connected": True,
+                "message": "Invoke-AtomicRedTeam module is available",
+            }
+        else:
+            return {
+                "connected": False,
+                "message": "Invoke-AtomicRedTeam module not found. Please install it.",
+            }
+    except Exception as e:
+        return {
+            "connected": False,
+            "message": str(e),
+        }
+
+
+@app.get("/health/sigma")
+def health_sigma():
+    """Quick health check for Sigma rules and pySigma library."""
+    try:
+        # Check if pySigma is installed
+        pysigma_installed = False
+        try:
+            import sigma
+            pysigma_installed = True
+        except ImportError:
+            pass
+        
+        # Check if Sigma rules repository exists
+        sigma_repo_path = os.getenv("SIGMA_RULES_PATH", "/opt/sigma/rules")
+        repo_exists = os.path.isdir(sigma_repo_path)
+        
+        # Count rules if repo exists
+        rule_count = 0
+        if repo_exists:
+            from pathlib import Path
+            rules_path = Path(sigma_repo_path)
+            rule_files = list(rules_path.rglob("*.yml")) + list(rules_path.rglob("*.yaml"))
+            rule_count = len(rule_files)
+        
+        if pysigma_installed and repo_exists:
+            return {
+                "connected": True,
+                "message": f"pySigma installed and {rule_count} Sigma rules available",
+                "pysigma_installed": True,
+                "repo_path": sigma_repo_path,
+                "rule_count": rule_count,
+            }
+        elif pysigma_installed and not repo_exists:
+            return {
+                "connected": False,
+                "message": "pySigma installed but Sigma rules repository not found",
+                "pysigma_installed": True,
+                "repo_path": sigma_repo_path,
+                "repo_exists": False,
+                "hint": "Clone https://github.com/SigmaHQ/sigma or set SIGMA_RULES_PATH",
+            }
+        elif not pysigma_installed and repo_exists:
+            return {
+                "connected": False,
+                "message": f"Sigma rules found ({rule_count}) but pySigma not installed",
+                "pysigma_installed": False,
+                "repo_path": sigma_repo_path,
+                "rule_count": rule_count,
+                "hint": "Install with: pip install pysigma pysigma-backend-splunk",
+            }
+        else:
+            return {
+                "connected": False,
+                "message": "pySigma not installed and Sigma rules repository not found",
+                "pysigma_installed": False,
+                "repo_path": sigma_repo_path,
+                "repo_exists": False,
+                "hint": "Install pySigma and clone Sigma rules repository",
+            }
+    except Exception as e:
+        return {
+            "connected": False,
+            "message": str(e),
+        }
+
+
 @app.websocket("/ws")
 async def ws_chat(websocket: WebSocket):
     await websocket.accept()

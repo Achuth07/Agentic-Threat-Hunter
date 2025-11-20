@@ -66,3 +66,9 @@ pyvelociraptor>=0.1.11,<0.2.0
 # Web Browsing
 duckduckgo-search==6.3.1
 beautifulsoup4==4.12.3
+
+# Sigma Rules
+pysigma>=0.11.0
+pysigma-backend-splunk>=1.0.0
+pysigma-pipeline-sysmon>=1.0.0
+
