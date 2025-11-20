@@ -62,3 +62,7 @@ uvicorn[standard]==0.32.0
 
 # Velociraptor client (PyPI currently offers 0.1.x)
 pyvelociraptor>=0.1.11,<0.2.0
+
+# Web Browsing
+duckduckgo-search==6.3.1
+beautifulsoup4==4.12.3

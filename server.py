@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import ChatOllama
 import splunklib.client as client
@@ -363,6 +364,18 @@ def _route_tool(question: str) -> str:
     if any(k in q for k in velo_keywords):
         return "run_velociraptor_query"
 
+    # Priority 5: Web research keywords
+    web_keywords = [
+        "who is", "what is", "latest news", "research", "cve-", "vulnerability details",
+        "threat actor", "apt group", "campaign", "summarize url", "read url", "visit page",
+        "summarize https", "read https", "analyze https"
+    ]
+    if any(k in q for k in web_keywords):
+        # Distinguish between search and visit
+        if "http" in q or "url" in q or "visit" in q:
+            return "visit_page"
+        return "web_search"
+
     # Fallback to LLM router with stronger guidance and examples
     router_prompt = ChatPromptTemplate.from_messages([
         (
@@ -380,6 +393,12 @@ Tools (choose one):
 - check_virustotal
   Purpose: Threat intelligence and reputation lookups. Use when the user wants to check if an IP, file hash, or URL is malicious, query VirusTotal, or get IOC reputation.
 
+- web_search
+  Purpose: General web search for threat intelligence, IOC research, CVE details, or general knowledge. Use when the user asks "who is...", "what is...", "latest news on...", or for external information not in logs/endpoints.
+
+- visit_page
+  Purpose: Visit a specific URL to extract its content. Use when the user provides a URL and asks to summarize, read, or analyze it.
+
 Routing rules (decide with certainty):
 1) If the request mentions login, logon, authentication, failed login, successful login, credentials, or password events -> execute_splunk_search. ALWAYS use Splunk for authentication/logon queries, NEVER Velociraptor.
 2) If the request mentions Windows Event IDs, EventCode, sourcetype, index=, dashboards, SIEM analytics, trends over time, or searching logs -> execute_splunk_search.
@@ -388,67 +407,21 @@ Routing rules (decide with certainty):
 5) If the user says "on host/computer X", "on this machine", "on the endpoint", "on the system" and wants system state -> run_velociraptor_query (Velociraptor runs on an endpoint).
 6) If the user says "in Splunk", "SPL", or includes SPL-like tokens (index=, tstats, mstats) -> execute_splunk_search.
 7) If the user asks to check if an IP/hash/URL is malicious, wants VirusTotal data, or mentions threat intel/IOC reputation -> check_virustotal.
+8) If the user asks research questions (e.g., "Who is...", "What is CVE-...", "News on...") -> web_search.
+9) If the user asks to read, summarize, or visit a URL -> visit_page.
 
 Output format:
-- Return EXACTLY one token: execute_splunk_search OR run_velociraptor_query OR check_virustotal
+- Return EXACTLY one token: execute_splunk_search OR run_velociraptor_query OR check_virustotal OR web_search OR visit_page
 - No extra words, punctuation, or quotes.
-
-Examples:
-User: check for failed login events on host achuthdell
-You: execute_splunk_search
-
-User: failed logons in last 24 hours
-You: execute_splunk_search
-
-User: show successful authentication events
-You: execute_splunk_search
-
-User: count 4625 failed logons by user over the past day
-You: execute_splunk_search
-
-User: user login activity for the past week
-You: execute_splunk_search
-
-User: list running processes on achuthdell
-You: run_velociraptor_query
-
-User: what processes are running on the machine
-You: run_velociraptor_query
-
-User: show me running processes
-You: run_velociraptor_query
-
-User: what programs are currently executing
-You: run_velociraptor_query
-
-User: list all running programs
-You: run_velociraptor_query
-
-User: what is the basic information about this computer?
-You: run_velociraptor_query
-
-User: show me all the local user accounts
-You: run_velociraptor_query
-
-User: search for EventID 4688 process creations in the last day
-You: execute_splunk_search
-
-User: show active listening ports
-You: run_velociraptor_query
-
-User: is this IP malicious? 8.8.8.8
-You: check_virustotal
-
-User: check hash 44d88612fea8a8f36de82e1278abb02f in virustotal
-You: check_virustotal
 """,
         ),
-        ("human", "{q}"),
+        ("human", "{question}"),
     ])
     llm = ChatOllama(model=SUMMARY_MODEL)
     msg = llm.invoke(router_prompt.format_messages(q=question))
     choice = (getattr(msg, "content", str(msg)) or "").strip()
-    return choice if choice in {"execute_splunk_search", "run_velociraptor_query", "check_virustotal"} else "execute_splunk_search"
+    return choice if choice in {"execute_splunk_search", "run_velociraptor_query", "check_virustotal", "web_search", "visit_page"} else "execute_splunk_search"
+
 def _apply_time_window_policy(question: str, spl: str, mode: str | None = None):
     """Normalize/insert earliest/latest based on natural language like 'last 24 hours'.
     Returns (new_spl, reason_or_None). Conservative heuristic.
@@ -799,15 +772,16 @@ async def ws_chat(websocket: WebSocket):
                         "title": "Executing Splunk search",
                         "detail": "Running query against Splunk",
                         "status": "running",
-                        "icon": "bolt",
+                        "icon": "search",
                     })
-                    spl_results_list = []
+                    
+                    splunk_rows = []
                     try:
-                        spl_results_list = await run_in_threadpool(_execute_splunk_search, spl_hunt)
+                        splunk_rows = await run_in_threadpool(_execute_splunk_search, spl_hunt)
                         await websocket.send_json({
                             "type": "activity",
                             "title": "Search completed",
-                            "detail": f"{len(spl_results_list)} rows returned",
+                            "detail": f"{len(splunk_rows)} events found",
                             "status": "done",
                             "icon": "check",
                         })
@@ -820,212 +794,160 @@ async def ws_chat(websocket: WebSocket):
                             "icon": "x",
                         })
 
-                    # 3) Combine results into a final summary
-                    await websocket.send_json({
-                        "type": "activity",
-                        "title": "Combining results",
-                        "detail": "Producing a consolidated incident summary",
-                        "status": "running",
-                        "icon": "robot",
-                    })
-
-                    vt_mal = vt_result.get("malicious", 0)
-                    vt_total = vt_result.get("total", 0)
-                    velo_count = len(velo_results_list) if isinstance(velo_results_list, list) else 0
-                    spl_count = len(spl_results_list) if isinstance(spl_results_list, list) else 0
-
-                    # Derive a few quick facts from Splunk rows
-                    unique_hosts = set()
-                    unique_sourcetypes = set()
-                    for r in (spl_results_list or []):
-                        h = r.get("host") or r.get("result", {}).get("host")
-                        st = r.get("sourcetype") or r.get("result", {}).get("sourcetype")
-                        if h: unique_hosts.add(h)
-                        if st: unique_sourcetypes.add(st)
-
-                    combined_summary = (
-                        f"VirusTotal reports the IP {ioc} as malicious (" \
-                        f"{vt_mal}/{vt_total} vendors). " \
-                        f"Velociraptor shows {velo_count} active connection(s) to this IP on the endpoint. " \
-                        f"Splunk found {spl_count} historical event(s) across " \
-                        f"{len(unique_hosts)} host(s) and {len(unique_sourcetypes)} sourcetype(s)."
-                    )
-
-                    await websocket.send_json({
-                        "type": "activity",
-                        "title": "Combining results",
-                        "detail": combined_summary[:180] + ("…" if len(combined_summary) > 180 else ""),
-                        "status": "done",
-                        "icon": "check",
-                    })
-
-                    # Final combined payload: send all three result sets
+                    # Combine results
+                    combined_summary = f"Threat Hunt Results for {ioc}:\n"
+                    combined_summary += f"- VirusTotal: {mal}/{total} malicious.\n"
+                    combined_summary += f"- Endpoint (Velociraptor): Found {len(velo_results_list)} active connections.\n"
+                    combined_summary += f"- SIEM (Splunk): Found {len(splunk_rows)} historical events.\n"
+                    
                     await websocket.send_json({
                         "type": "final",
-                        "source": "multi_hunt",
-                        "multi_hunt": True,
+                        "source": "combined_hunt",
                         "spl": spl_hunt,
                         "vql": velo_vql,
                         "ioc": ioc,
                         "ioc_type": ioc_type,
+                        "count": len(splunk_rows) + len(velo_results_list),
+                        "results": {
+                            "virustotal": vt_result,
+                            "velociraptor": velo_results_list,
+                            "splunk": splunk_rows
+                        },
                         "summary": combined_summary,
-                        "result_sections": [
-                            {
-                                "source": "virustotal",
-                                "title": "VirusTotal IOC Report",
-                                "count": 1,
-                                "results": [vt_result],
-                            },
-                            {
-                                "source": "velociraptor",
-                                "title": "Active Connections (Velociraptor)",
-                                "count": velo_count,
-                                "results": velo_results_list[:req_raw_limit] if isinstance(velo_results_list, list) else [],
-                            },
-                            {
-                                "source": "splunk",
-                                "title": "Historical Communication (Splunk)",
-                                "count": spl_count,
-                                "results": spl_results_list[:req_raw_limit] if isinstance(spl_results_list, list) else [],
-                            },
-                        ],
                     })
+
                 except Exception as e:
                     await websocket.send_json({
                         "type": "error",
-                        "title": "VirusTotal error",
+                        "title": "Threat hunt error",
                         "detail": str(e),
                     })
                 continue
 
-            else:
-                # Use LangGraph for Splunk and Velociraptor
-                # 1. Build the graph
-                # We build it per-request to capture the latest config/models
-                cfg_path = os.getenv("VELOCIRAPTOR_CONFIG") or os.path.join(os.getcwd(), "api.config.yaml")
+            # 3) Execute other tools via the Agent Graph
+            # Define callbacks for the graph
+            def _graph_velo(vql: str) -> str:
+                # Use the .func attribute if it's a LangChain tool, otherwise call directly
+                fn = getattr(run_velociraptor_query, "func", run_velociraptor_query)
+                return fn(vql)
+
+            # Build the graph
+            agent_graph = build_multitool_graph(
+                splunk_execute_fn=_execute_splunk_search,
+                velociraptor_fn=_graph_velo,
+                router_model=req_summary_model, # Use summary model for routing as it's usually smarter/faster
+                spl_model=req_spl_model,
+                vql_model=req_vql_model,
+                coder_model=req_coder_model,
+            )
+
+            # Initial state
+            initial_state = {
+                "user_query": question,
+                "tool_choice": tool_choice,
+                "retry_count": 0,
+                "messages": [],
+                "error": None
+            }
+
+            # Run the graph
+            # We use astream to get updates if possible, but for now invoke is safer for synchronous-like flow
+            # or we can just use invoke since the graph steps are synchronous except for the LLM calls which are blocking in this setup
+            
+            # Notify execution start
+            await websocket.send_json({
+                "type": "activity",
+                "title": "Executing tool",
+                "detail": f"Running {tool_choice}...",
+                "status": "running",
+                "icon": "bolt",
+            })
+
+            try:
+                final_state = await run_in_threadpool(agent_graph.invoke, initial_state)
                 
-                graph = build_multitool_graph(
-                    splunk_execute_fn=_execute_splunk_search,
-                    velociraptor_fn=lambda vql: run_velociraptor_query.func(vql, config_path=cfg_path),
-                    router_model=req_summary_model, # Use summary model for routing
-                    spl_model=req_spl_model,
-                    vql_model=req_vql_model,
-                    coder_model=req_coder_model
-                )
+                # Extract results
+                results = final_state.get("results")
+                error = final_state.get("error")
+                
+                if error:
+                    await websocket.send_json({
+                        "type": "error",
+                        "title": "Tool execution failed",
+                        "detail": error,
+                    })
+                    continue
 
-                # 2. Stream events
-                final_state = None
-                async for event in graph.astream_events({"user_query": question}, version="v1"):
-                    kind = event["event"]
-                    name = event["name"]
-                    
-                    if kind == "on_chain_start" and name == "tool_router":
-                         await websocket.send_json({
-                            "type": "activity",
-                            "title": "Routing",
-                            "detail": "Deciding between Splunk and Velociraptor",
-                            "status": "running",
-                            "icon": "robot",
-                        })
-                    elif kind == "on_chain_end" and name == "tool_router":
-                        # event['data']['output'] is {'tool_choice': ...}
-                        output = event["data"].get("output")
-                        if output and "tool_choice" in output:
-                             await websocket.send_json({
-                                "type": "activity",
-                                "title": "Tool selected",
-                                "detail": output["tool_choice"],
-                                "status": "done",
-                                "icon": "robot",
-                            })
+                # Summarize results
+                await websocket.send_json({
+                    "type": "activity",
+                    "title": "Summarizing results",
+                    "detail": "Generating human-readable answer...",
+                    "status": "running",
+                    "icon": "robot",
+                })
 
-                    elif kind == "on_chain_start" and name == "generate_query":
-                         await websocket.send_json({
-                            "type": "activity",
-                            "title": "Generating Query",
-                            "detail": "Drafting SPL or VQL...",
-                            "status": "running",
-                            "icon": "code",
-                        })
-                    elif kind == "on_chain_end" and name == "generate_query":
-                        output = event["data"].get("output")
-                        if output:
-                            q_str = output.get("spl_query") or output.get("vql_query")
-                            if q_str:
-                                await websocket.send_json({
-                                    "type": "activity",
-                                    "title": "Query Generated",
-                                    "detail": q_str,
-                                    "status": "done",
-                                    "icon": "code",
-                                })
-
-                    elif kind == "on_chain_start" and name == "execute_tool":
-                         await websocket.send_json({
-                            "type": "activity",
-                            "title": "Executing Tool",
-                            "detail": "Running query...",
-                            "status": "running",
-                            "icon": "bolt",
-                        })
-                    elif kind == "on_chain_end" and name == "execute_tool":
-                         # We don't send "done" here yet because we might reflect. 
-                         # But for UI feedback, let's say execution is done.
-                         await websocket.send_json({
-                            "type": "activity",
-                            "title": "Execution finished",
-                            "detail": "Results received",
-                            "status": "done",
-                            "icon": "check",
-                        })
-
-                    elif kind == "on_chain_start" and name == "reflect_node":
-                         await websocket.send_json({
-                            "type": "activity",
-                            "title": "Self-Correction",
-                            "detail": "Error detected. Reflecting and retrying...",
-                            "status": "running",
-                            "icon": "alert",
-                        })
-                    
-                    if kind == "on_chain_end" and name == "LangGraph":
-                        final_state = event["data"].get("output")
-
-                # 3. Process final results
-                if final_state:
-                    results_data = final_state.get("results")
-                    tool = final_state.get("tool_choice")
+                summary_text = ""
+                if tool_choice == "execute_splunk_search":
                     spl = final_state.get("spl_query")
-                    vql = final_state.get("vql_query")
-                    error = final_state.get("error")
+                    summary_text = await _summarize_results(question, spl, results, model=req_summary_model)
+                elif tool_choice == "run_velociraptor_query":
+                    # Simple summary for VQL
+                    count = len(results) if isinstance(results, list) else 0
+                    summary_text = f"Velociraptor query returned {count} rows."
+                    # We could use LLM to summarize VQL results too if needed
+                elif tool_choice == "web_search":
+                    # Web search results are usually a string or list of dicts
+                    summary_text = f"Web search returned: {str(results)[:200]}..."
+                    # Ideally use LLM to answer the question based on search results
+                    prompt = ChatPromptTemplate.from_messages([
+                        ("system", "You are a helpful assistant. Answer the user's question based on the search results."),
+                        ("human", "Question: {q}\nResults: {r}")
+                    ])
+                    llm = ChatOllama(model=req_summary_model)
+                    msg = await run_in_threadpool(llm.invoke, prompt.format_messages(q=question, r=str(results)))
+                    summary_text = msg.content
+                elif tool_choice == "visit_page":
+                    # Page content
+                    summary_text = f"Page content length: {len(str(results))}"
+                    prompt = ChatPromptTemplate.from_messages([
+                        ("system", "You are a helpful assistant. Summarize the page content for the user."),
+                        ("human", "Question: {q}\nPage Content: {c}")
+                    ])
+                    llm = ChatOllama(model=req_summary_model)
+                    # Truncate content to avoid context limit
+                    content_preview = str(results)[:8000]
+                    msg = await run_in_threadpool(llm.invoke, prompt.format_messages(q=question, c=content_preview))
+                    summary_text = msg.content
 
-                    if error:
-                         await websocket.send_json({
-                            "type": "error",
-                            "title": "Execution Failed",
-                            "detail": f"After retries, the agent could not fix the error: {error}",
-                        })
-                    else:
-                        # Summarize
-                        summary_text = ""
-                        if tool == "execute_splunk_search":
-                             # Splunk results are list[dict]
-                             rows = results_data if isinstance(results_data, list) else []
-                             summary_text = await _summarize_results(question, spl, rows, req_summary_model)
-                        else:
-                             # Velociraptor results are list[dict] (parsed) or dict with error
-                             rows = results_data if isinstance(results_data, list) else []
-                             summary_text = f"Velociraptor returned {len(rows)} rows."
+                await websocket.send_json({
+                    "type": "activity",
+                    "title": "Summarizing results",
+                    "detail": summary_text[:100] + "...",
+                    "status": "done",
+                    "icon": "robot",
+                })
 
-                        await websocket.send_json({
-                            "type": "final",
-                            "source": "splunk" if tool == "execute_splunk_search" else "velociraptor",
-                            "spl": spl,
-                            "vql": vql,
-                            "count": len(rows),
-                            "results": rows,
-                            "summary": summary_text,
-                        })
+                # Send final response
+                await websocket.send_json({
+                    "type": "final",
+                    "source": tool_choice,
+                    "spl": final_state.get("spl_query"),
+                    "vql": final_state.get("vql_query"),
+                    "count": len(results) if isinstance(results, list) else 1,
+                    "results": results,
+                    "summary": summary_text,
+                })
+
+            except Exception as e:
+                await websocket.send_json({
+                    "type": "error",
+                    "title": "Agent execution error",
+                    "detail": str(e),
+                })
+                import traceback
+                traceback.print_exc()
+            continue
 
     except WebSocketDisconnect:
         return
