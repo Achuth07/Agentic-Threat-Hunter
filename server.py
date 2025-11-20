@@ -322,7 +322,7 @@ def _sanitize_vql(question: str, vql: str) -> str:
     return q
 
 
-def _route_tool(question: str) -> str:
+async def _route_tool(question: str) -> str:
     """Choose between 'execute_splunk_search', 'run_velociraptor_query', and 'check_virustotal'.
     Apply a fast heuristic first; if inconclusive, fall back to an LLM router.
     """
@@ -427,7 +427,7 @@ Output format:
         ("human", "{question}"),
     ])
     llm = ChatOllama(model=SUMMARY_MODEL)
-    msg = llm.invoke(router_prompt.format_messages(q=question))
+    msg = await llm.ainvoke(router_prompt.format_messages(q=question))
     choice = (getattr(msg, "content", str(msg)) or "").strip()
     return choice if choice in {"execute_splunk_search", "run_velociraptor_query", "check_virustotal", "web_search", "visit_page"} else "execute_splunk_search"
 
@@ -695,7 +695,7 @@ async def ws_chat(websocket: WebSocket):
             })
 
             # 2) Route to best tool
-            tool_choice = _route_tool(question)
+            tool_choice = await _route_tool(question)
             await websocket.send_json({
                 "type": "activity",
                 "title": "Tool selected",
