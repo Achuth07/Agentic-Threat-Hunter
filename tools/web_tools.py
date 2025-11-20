@@ -10,7 +10,6 @@ def web_search(query: str) -> str:
     """
     # 1. Try Tavily AI (if API key is present)
     tavily_key = os.getenv("TAVILY_API_KEY")
-    print(f"DEBUG: Tavily Key Present: {bool(tavily_key)}")
     if tavily_key:
         try:
             client = TavilyClient(api_key=tavily_key)
@@ -18,12 +17,15 @@ def web_search(query: str) -> str:
             response = client.search(query, search_depth="advanced", max_results=5)
             results = response.get("results", [])
             if results:
+                # Success - return immediately without trying fallback
                 return "\n\n".join([f"Title: {r['title']}\nURL: {r['url']}\nSnippet: {r['content']}" for r in results])
+            # If no results, fall through to Jina
         except Exception as e:
+            # Only print error if Tavily actually failed
             print(f"Tavily search failed: {e}. Falling back to Jina AI.")
 
     # 2. Fallback to Jina AI Reader (Search Mode)
-    # Jina Reader can search by prepending https://s.jina.ai/ to the query
+    # Only reached if Tavily is not configured or failed
     try:
         # URL encode the query
         import urllib.parse

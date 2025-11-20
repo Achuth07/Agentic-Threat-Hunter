@@ -129,7 +129,7 @@ function App() {
               const analyzingIdx = updated.findIndex(a => a.id === 'Analyzing question')
               if (analyzingIdx >= 0 && updated[analyzingIdx].type === 'info') {
                 updated[analyzingIdx] = {
-                  ...updated[analyachingIdx],
+                  ...updated[analyzingIdx],
                   type: 'success',
                   status: 'done',
                   timestamp: new Date().toISOString(),
@@ -156,9 +156,16 @@ function App() {
           // Ensure summary is a string to prevent React render crashes
           const safeSummary = typeof data.summary === 'string' ? data.summary : JSON.stringify(data.summary || '');
 
+          // Ensure results is always an array
+          let safeResults = data.results;
+          if (!Array.isArray(safeResults)) {
+            // If results is a string or object, wrap it in an array
+            safeResults = safeResults ? [safeResults] : [];
+          }
+
           setSearchResults({
             summary: safeSummary,
-            results: data.results,
+            results: safeResults,
             spl: data.spl,
             vql: data.vql,
             count: data.count,

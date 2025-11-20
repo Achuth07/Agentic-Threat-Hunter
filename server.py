@@ -180,37 +180,63 @@ def health_velociraptor():
 
 async def _summarize_results(question: str, query: str, rows: list[dict] | str, tool_name: str, model: str | None = None) -> str:
     """Use the local LLM to summarize results into a short human-friendly paragraph.
-    Handles Splunk (list of dicts), Velociraptor (list of dicts), and Web (string/list).
+    Handles Splunk (list of dicts), Velociraptor (list of dicts), and Web (string).
     """
     try:
-        # Prepare sample
-        if isinstance(rows, list):
-            sample = rows[:10]
-            count_str = str(len(rows))
-        else:
-            sample = str(rows)[:4000]
-            count_str = "N/A"
-
-        prompt = ChatPromptTemplate.from_messages([
-            (
-                "system",
-                f"You are a security analyst. Summarize {tool_name} results for humans. Be concise (2-5 sentences). Mention counts and notable fields/values. Avoid code blocks. Do not include any preamble like 'Here is', 'Here's', 'Summary:', or 'Overview:'. Write the summary sentences directly.",
-            ),
-            (
-                "human",
-                """Summarize this search result:
+        # For web tools, the result is a string, not a list
+        if tool_name in ["web_search", "visit_page"]:
+            # Web results are already text content
+            content = str(rows)[:4000] if rows else "No content available"
+            
+            prompt = ChatPromptTemplate.from_messages([
+                (
+                    "system",
+                    f"You are a security analyst. Summarize the web content for humans. Be concise (2-5 sentences). Focus on answering the user's question. Avoid code blocks. Do not include any preamble like 'Here is', 'Here's', 'Summary:', or 'Overview:'. Write the summary sentences directly.",
+                ),
+                (
+                    "human",
+                    """Summarize this web content:
 Query: {query}
-Total rows/size: {count}
+Content: {content}
+User question: {question}
+Write a short, human-friendly summary that answers the question.""",
+                ),
+            ])
+            
+            llm = ChatOllama(model=(model or SUMMARY_MODEL))
+            messages = prompt.format_messages(
+                query=query, content=content, question=question
+            )
+        else:
+            # Splunk/Velociraptor results are lists of dicts
+            if isinstance(rows, list):
+                sample = rows[:10]
+                count_str = str(len(rows))
+            else:
+                sample = str(rows)[:4000]
+                count_str = "N/A"
+
+            prompt = ChatPromptTemplate.from_messages([
+                (
+                    "system",
+                    f"You are a security analyst. Summarize {tool_name} results for humans. Be concise (2-5 sentences). Mention counts and notable fields/values. Avoid code blocks. Do not include any preamble like 'Here is', 'Here's', 'Summary:', or 'Overview:'. Write the summary sentences directly.",
+                ),
+                (
+                    "human",
+                    """Summarize this search result:
+Query: {query}
+Total rows: {count}
 Sample: {sample}
 User question: {question}
 Write a short, human-friendly summary.""",
-            ),
-        ])
+                ),
+            ])
+            
+            llm = ChatOllama(model=(model or SUMMARY_MODEL))
+            messages = prompt.format_messages(
+                query=query, count=count_str, sample=json.dumps(sample, default=str)[:4000], question=question
+            )
         
-        llm = ChatOllama(model=(model or SUMMARY_MODEL))
-        messages = prompt.format_messages(
-            query=query, count=count_str, sample=json.dumps(sample, default=str)[:4000], question=question
-        )
         from starlette.concurrency import run_in_threadpool
         msg = await run_in_threadpool(llm.invoke, messages)
         text = msg.content if hasattr(msg, "content") else str(msg)
@@ -1068,7 +1094,9 @@ async def ws_chat(websocket: WebSocket):
                     "source": tool_choice,
                     "spl": final_state.get("spl_query"),
                     "vql": final_state.get("vql_query"),
-                    "count": len(results) if isinstance(results, list) else 1,
+                    "web_query": final_state.get("web_query"),
+                    "web_url": final_state.get("web_url"),
+                    "count": len(results) if isinstance(results, list) else None,  # Don't show count for web tools
                     "results": results,
                     "summary": summary_text,
                 })

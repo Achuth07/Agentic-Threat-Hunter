@@ -554,7 +554,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                         </p>
                       </div>
 
-                      {section.results && section.results.length > 0 ? (
+                      {section.results && Array.isArray(section.results) && section.results.length > 0 ? (
                         <div className="space-y-3">
                           {section.results.map((result, idx) => (
                             <div key={idx} className="bg-neutral-950 rounded-xl border border-neutral-800 overflow-hidden">
@@ -611,7 +611,7 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                     </p>
                   </div>
 
-                  {searchResults && searchResults.results && searchResults.results.length > 0 ? (
+                  {searchResults && searchResults.results && Array.isArray(searchResults.results) && searchResults.results.length > 0 ? (
                     <div className="space-y-3 pb-6">
                       {searchResults.results.map((result, idx) => (
                         <div key={idx} className="bg-neutral-950 rounded-xl border border-neutral-800 overflow-hidden">
