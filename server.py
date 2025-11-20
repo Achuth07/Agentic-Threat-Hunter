@@ -864,9 +864,48 @@ async def ws_chat(websocket: WebSocket):
             })
 
             try:
-                final_state = await run_in_threadpool(agent_graph.invoke, initial_state)
+                # Use astream to get intermediate steps (like generated query)
+                final_state = initial_state.copy()
                 
-                # Extract results
+                # We use astream to iterate over the graph steps
+                async for output in agent_graph.astream(initial_state):
+                    for node_name, state_update in output.items():
+                        # Update our local view of the state
+                        final_state.update(state_update)
+                        
+                        if node_name == "generate_query":
+                            # Check for generated queries and notify UI
+                            spl = state_update.get("spl_query")
+                            vql = state_update.get("vql_query")
+                            web_q = state_update.get("web_query")
+                            web_url = state_update.get("web_url")
+                            
+                            detail = ""
+                            title = "Query Generated"
+                            
+                            if spl:
+                                detail = spl
+                                title = "Generated SPL"
+                            elif vql:
+                                detail = vql
+                                title = "Generated VQL"
+                            elif web_q:
+                                detail = web_q
+                                title = "Web Search Query"
+                            elif web_url:
+                                detail = web_url
+                                title = "Visiting URL"
+                                
+                            if detail:
+                                await websocket.send_json({
+                                    "type": "activity",
+                                    "title": title,
+                                    "detail": detail,
+                                    "status": "done",
+                                    "icon": "code",
+                                })
+
+                # Extract results from final state
                 results = final_state.get("results")
                 error = final_state.get("error")
                 
