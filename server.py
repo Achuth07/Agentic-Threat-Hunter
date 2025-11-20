@@ -178,43 +178,52 @@ def health_velociraptor():
         }
 
 
-async def _summarize_results(question: str, spl: str, rows: list[dict], model: str | None = None) -> str:
+async def _summarize_results(question: str, query: str, rows: list[dict] | str, tool_name: str, model: str | None = None) -> str:
     """Use the local LLM to summarize results into a short human-friendly paragraph.
-    Allows per-request model override.
+    Handles Splunk (list of dicts), Velociraptor (list of dicts), and Web (string/list).
     """
     try:
-        sample = rows[:10]
+        # Prepare sample
+        if isinstance(rows, list):
+            sample = rows[:10]
+            count_str = str(len(rows))
+        else:
+            sample = str(rows)[:4000]
+            count_str = "N/A"
+
         prompt = ChatPromptTemplate.from_messages([
             (
                 "system",
-                "You are a security analyst. Summarize Splunk results for humans. Be concise (2-5 sentences). Mention counts and notable fields/values. Avoid code blocks. Do not include any preamble like 'Here is', 'Here's', 'Summary:', or 'Overview:'. Write the summary sentences directly.",
+                f"You are a security analyst. Summarize {tool_name} results for humans. Be concise (2-5 sentences). Mention counts and notable fields/values. Avoid code blocks. Do not include any preamble like 'Here is', 'Here's', 'Summary:', or 'Overview:'. Write the summary sentences directly.",
             ),
             (
                 "human",
-                """Summarize this Splunk search:
-Query: {spl}
-Total rows: {count}
-Sample (JSON): {sample}
+                """Summarize this search result:
+Query: {query}
+Total rows/size: {count}
+Sample: {sample}
 User question: {question}
 Write a short, human-friendly summary.""",
             ),
         ])
-        # Use summarization model separate from SPL generator
+        
         llm = ChatOllama(model=(model or SUMMARY_MODEL))
         messages = prompt.format_messages(
-            spl=spl, count=len(rows), sample=json.dumps(sample)[:4000], question=question
+            query=query, count=count_str, sample=json.dumps(sample, default=str)[:4000], question=question
         )
         from starlette.concurrency import run_in_threadpool
         msg = await run_in_threadpool(llm.invoke, messages)
         text = msg.content if hasattr(msg, "content") else str(msg)
         clean = text.strip()
-        # Remove common LLM preambles, we'll add our own consistent label in the UI payload
+        
         import re
         clean = re.sub(r"^\s*(here(?:'s| is)\b[^:\n]*:\s*)", "", clean, flags=re.IGNORECASE)
         clean = re.sub(r"^\s*(summary|overview)\s*:\s*", "", clean, flags=re.IGNORECASE)
         return clean
     except Exception as e:
         return f"Summary unavailable: {e}"
+
+
 
 
 def _build_prompt():
@@ -927,37 +936,23 @@ async def ws_chat(websocket: WebSocket):
                 })
 
                 summary_text = ""
+                query_str = ""
                 if tool_choice == "execute_splunk_search":
-                    spl = final_state.get("spl_query")
-                    summary_text = await _summarize_results(question, spl, results, model=req_summary_model)
+                    query_str = final_state.get("spl_query")
                 elif tool_choice == "run_velociraptor_query":
-                    # Simple summary for VQL
-                    count = len(results) if isinstance(results, list) else 0
-                    summary_text = f"Velociraptor query returned {count} rows."
-                    # We could use LLM to summarize VQL results too if needed
+                    query_str = final_state.get("vql_query")
                 elif tool_choice == "web_search":
-                    # Web search results are usually a string or list of dicts
-                    summary_text = f"Web search returned: {str(results)[:200]}..."
-                    # Ideally use LLM to answer the question based on search results
-                    prompt = ChatPromptTemplate.from_messages([
-                        ("system", "You are a helpful assistant. Answer the user's question based on the search results."),
-                        ("human", "Question: {q}\nResults: {r}")
-                    ])
-                    llm = ChatOllama(model=req_summary_model)
-                    msg = await run_in_threadpool(llm.invoke, prompt.format_messages(q=question, r=str(results)))
-                    summary_text = msg.content
+                    query_str = final_state.get("web_query")
                 elif tool_choice == "visit_page":
-                    # Page content
-                    summary_text = f"Page content length: {len(str(results))}"
-                    prompt = ChatPromptTemplate.from_messages([
-                        ("system", "You are a helpful assistant. Summarize the page content for the user."),
-                        ("human", "Question: {q}\nPage Content: {c}")
-                    ])
-                    llm = ChatOllama(model=req_summary_model)
-                    # Truncate content to avoid context limit
-                    content_preview = str(results)[:8000]
-                    msg = await run_in_threadpool(llm.invoke, prompt.format_messages(q=question, c=content_preview))
-                    summary_text = msg.content
+                    query_str = final_state.get("web_url")
+
+                summary_text = await _summarize_results(
+                    question=question,
+                    query=query_str,
+                    rows=results,
+                    tool_name=tool_choice,
+                    model=req_summary_model
+                )
 
                 await websocket.send_json({
                     "type": "activity",
