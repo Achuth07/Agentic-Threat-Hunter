@@ -148,7 +148,8 @@ Examples:
             "system",
             """
 You convert a user's request about Sigma rules into a JSON string for the tool.
-Output ONLY the JSON.
+You MUST output valid JSON. Do not output any conversational text, markdown, or code blocks. JUST THE JSON.
+
 Format:
 {{
   "action": "list_rules" | "get_rule" | "convert_to_spl" | "convert_to_vql" | "search_rules",
@@ -195,22 +196,48 @@ Examples:
             return {"web_url": url}
         elif tool == "atomic_red_team":
             msg = await atomic_llm.ainvoke(atomic_prompt.format_messages(question=q, messages=history))
-            # Clean up json markdown if present
             content = (msg.content or "").strip()
-            if content.startswith("```json"):
-                content = content[7:]
-            if content.endswith("```"):
-                content = content[:-3]
-            return {"atomic_query": content.strip()}
+            # Robust JSON extraction
+            import re
+            json_match = re.search(r"\{.*\}", content, re.DOTALL)
+            if json_match:
+                content = json_match.group(0)
+            return {"atomic_query": content}
         elif tool == "sigma_rule":
             msg = await sigma_llm.ainvoke(sigma_prompt.format_messages(question=q, messages=history))
-            # Clean up json markdown if present
             content = (msg.content or "").strip()
-            if content.startswith("```json"):
-                content = content[7:]
-            if content.endswith("```"):
-                content = content[:-3]
-            return {"sigma_query": content.strip()}
+            print(f"DEBUG: Sigma LLM Raw Output: {content}")
+            # Robust JSON extraction
+            import re
+            import json as json_lib
+            json_match = re.search(r"\{.*\}", content, re.DOTALL)
+            if json_match:
+                content = json_match.group(0)
+                print(f"DEBUG: Sigma Extracted JSON: {content}")
+            else:
+                print("DEBUG: No JSON found in Sigma LLM output, using fallback")
+                # Fallback: manually construct JSON from user query
+                q_lower = q.lower()
+                if "list" in q_lower and "sigma" in q_lower:
+                    content = json_lib.dumps({"action": "list_rules"})
+                elif "convert" in q_lower and "spl" in q_lower:
+                    # Extract rule ID from query
+                    rule_match = re.search(r"rule\s+(\S+)", q, re.IGNORECASE)
+                    rule_id = rule_match.group(1) if rule_match else "unknown"
+                    content = json_lib.dumps({"action": "convert_to_spl", "rule_id": rule_id})
+                elif "convert" in q_lower and "vql" in q_lower:
+                    rule_match = re.search(r"rule\s+(\S+)", q, re.IGNORECASE)
+                    rule_id = rule_match.group(1) if rule_match else "unknown"
+                    content = json_lib.dumps({"action": "convert_to_vql", "rule_id": rule_id})
+                elif "search" in q_lower or "find" in q_lower:
+                    # Extract search terms
+                    search_terms = re.sub(r"(search|find|sigma|rules?)", "", q_lower, flags=re.IGNORECASE).strip()
+                    content = json_lib.dumps({"action": "search_rules", "query": search_terms})
+                else:
+                    # Default to list
+                    content = json_lib.dumps({"action": "list_rules"})
+                print(f"DEBUG: Sigma Fallback JSON: {content}")
+            return {"sigma_query": content}
         else:
             msg = await spl_llm.ainvoke(spl_prompt.format_messages(question=q, messages=history))
             spl = (msg.content or "").strip().replace("`", "").strip("\"'")

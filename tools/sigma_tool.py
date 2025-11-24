@@ -372,7 +372,7 @@ class SigmaTool(BaseTool):
         
         query_lower = query.lower()
         
-        for rule_file in rule_files[:500]:  # Limit search scope
+        for rule_file in rule_files:  # Search all rules
             metadata = self._parse_sigma_rule(rule_file)
             if not metadata:
                 continue

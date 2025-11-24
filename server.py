@@ -208,7 +208,7 @@ Write a short, human-friendly summary that answers the question.""",
                 query=query, content=content, question=question
             )
         else:
-            # Splunk/Velociraptor results are lists of dicts
+            # Splunk/Velociraptor/Sigma results are lists of dicts
             if isinstance(rows, list):
                 sample = rows[:10]
                 count_str = str(len(rows))
@@ -216,20 +216,26 @@ Write a short, human-friendly summary that answers the question.""",
                 sample = str(rows)[:4000]
                 count_str = "N/A"
 
-            prompt = ChatPromptTemplate.from_messages([
-                (
-                    "system",
-                    f"You are a security analyst. Summarize {tool_name} results for humans. Be concise (2-5 sentences). Mention counts and notable fields/values. Avoid code blocks. Do not include any preamble like 'Here is', 'Here's', 'Summary:', or 'Overview:'. Write the summary sentences directly.",
-                ),
-                (
-                    "human",
-                    """Summarize this search result:
+            if tool_name == "sigma_rule":
+                system_prompt = "You are a security engineer helping a user find detection rules. Summarize the found Sigma rules. Clarify that these are AVAILABLE rules in the repository, NOT active alerts or detected attacks. Be concise. Mention the number of rules found and give examples of what they detect."
+                user_prompt = """Summarize these Sigma rules found in the repository:
+Query: {query}
+Total rules found: {count}
+Sample rules: {sample}
+User question: {question}
+Write a short summary explaining what these rules are for. Do NOT imply an attack is happening."""
+            else:
+                system_prompt = f"You are a security analyst. Summarize {tool_name} results for humans. Be concise (2-5 sentences). Mention counts and notable fields/values. Avoid code blocks. Do not include any preamble like 'Here is', 'Here's', 'Summary:', or 'Overview:'. Write the summary sentences directly."
+                user_prompt = """Summarize this search result:
 Query: {query}
 Total rows: {count}
 Sample: {sample}
 User question: {question}
-Write a short, human-friendly summary.""",
-                ),
+Write a short, human-friendly summary."""
+
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", system_prompt),
+                ("human", user_prompt),
             ])
             
             llm = ChatOllama(model=(model or SUMMARY_MODEL))
@@ -362,12 +368,20 @@ async def _route_tool(question: str) -> str:
     if any(k in q for k in vt_keywords):
         return "check_virustotal"
     
-    # Priority 2: Splunk-specific indicators (EventID, sourcetype, etc.)
+    # Priority 2: Sigma rule keywords (check before Splunk to avoid "search" false positives)
+    sigma_keywords = [
+        "sigma rule", "sigma detection", "convert sigma", "list sigma", "search sigma", "get sigma", 
+        "find sigma", "sigma rules", "detection rule"
+    ]
+    if any(k in q for k in sigma_keywords):
+        return "sigma_rule"
+    
+    # Priority 3: Splunk-specific indicators (EventID, sourcetype, etc.)
     splunk_indicators = ["eventid", "eventcode", "sourcetype", "index=", "tstats", "mstats", "search ", "dashboard", "siem"]
     if any(k in q for k in splunk_indicators):
         return "execute_splunk_search"
     
-    # Priority 3: Authentication/login/logon events (always Splunk, never Velociraptor)
+    # Priority 4: Authentication/login/logon events (always Splunk, never Velociraptor)
     auth_keywords = [
         "login", "logon", "logoff", "logout", "authentication", "auth", "failed login", 
         "failed logon", "successful login", "successful logon", "user login", "user logon",
@@ -376,7 +390,7 @@ async def _route_tool(question: str) -> str:
     if any(k in q for k in auth_keywords):
         return "execute_splunk_search"
 
-    # Priority 4: Process-related keywords (Velociraptor for live endpoint state)
+    # Priority 5: Process-related keywords (Velociraptor for live endpoint state)
     process_keywords = ["process", "processes", "running", "pslist", "tasklist", "pid", "executable"]
     if any(k in q for k in process_keywords):
         # Only route to Velociraptor if it's NOT about Splunk process events
@@ -399,7 +413,7 @@ async def _route_tool(question: str) -> str:
     if any(k in q for k in velo_keywords):
         return "run_velociraptor_query"
 
-    # Priority 5: Web research keywords
+    # Priority 6: Web research keywords
     web_keywords = [
         "who is", "what is", "latest news", "research", "cve-", "vulnerability details",
         "threat actor", "apt group", "campaign", "summarize url", "read url", "visit page",
@@ -434,6 +448,9 @@ Tools (choose one):
 - visit_page
   Purpose: Visit a specific URL to extract its content. Use when the user provides a URL and asks to summarize, read, or analyze it.
 
+- sigma_rule
+  Purpose: Search, parse, and convert Sigma detection rules to SPL or VQL. Use when the user asks about "sigma rules", "detection rules", "convert sigma", "list sigma rules", or mentions specific Sigma rule IDs.
+
 Routing rules (decide with certainty):
 1) If the request mentions login, logon, authentication, failed login, successful login, credentials, or password events -> execute_splunk_search. ALWAYS use Splunk for authentication/logon queries, NEVER Velociraptor.
 2) If the request mentions Windows Event IDs, EventCode, sourcetype, index=, dashboards, SIEM analytics, trends over time, or searching logs -> execute_splunk_search.
@@ -444,18 +461,19 @@ Routing rules (decide with certainty):
 7) If the user asks to check if an IP/hash/URL is malicious, wants VirusTotal data, or mentions threat intel/IOC reputation -> check_virustotal.
 8) If the user asks research questions (e.g., "Who is...", "What is CVE-...", "News on...") -> web_search.
 9) If the user asks to read, summarize, or visit a URL -> visit_page.
+10) If the user asks about Sigma rules, detection rules, or converting Sigma to SPL/VQL -> sigma_rule.
 
 Output format:
-- Return EXACTLY one token: execute_splunk_search OR run_velociraptor_query OR check_virustotal OR web_search OR visit_page
+- Return EXACTLY one token: execute_splunk_search OR run_velociraptor_query OR check_virustotal OR web_search OR visit_page OR sigma_rule
 - No extra words, punctuation, or quotes.
 """,
         ),
         ("human", "{question}"),
     ])
     llm = ChatOllama(model=SUMMARY_MODEL)
-    msg = await llm.ainvoke(router_prompt.format_messages(q=question))
+    msg = await llm.ainvoke(router_prompt.format_messages(question=question))
     choice = (getattr(msg, "content", str(msg)) or "").strip()
-    return choice if choice in {"execute_splunk_search", "run_velociraptor_query", "check_virustotal", "web_search", "visit_page"} else "execute_splunk_search"
+    return choice if choice in {"execute_splunk_search", "run_velociraptor_query", "check_virustotal", "web_search", "visit_page", "sigma_rule"} else "execute_splunk_search"
 
 def _apply_time_window_policy(question: str, spl: str, mode: str | None = None):
     """Normalize/insert earliest/latest based on natural language like 'last 24 hours'.
@@ -666,58 +684,75 @@ def health_sigma():
 @app.websocket("/ws")
 async def ws_chat(websocket: WebSocket):
     await websocket.accept()
+    print("WebSocket connection accepted")
     try:
         while True:
-            # Expect plain text or JSON payload with the user's question
-            incoming = await websocket.receive_text()
-            # Parse either plain text or JSON payload with settings
-            req_default_index = DEFAULT_INDEX
-            req_time_mode = TIME_POLICY_MODE
-            req_spl_model = OLLAMA_MODEL
-            req_vql_model = VQL_MODEL
-            req_summary_model = SUMMARY_MODEL
-            req_coder_model = CODER_MODEL
-            req_raw_limit = 50
             try:
-                data = json.loads(incoming)
-                if isinstance(data, dict) and ("question" in data or data.get("type") == "ask"):
-                    question = data.get("question") or data.get("q") or ""
-                    settings = data.get("settings") or {}
-                    req_default_index = settings.get("defaultIndex", req_default_index)
-                    req_time_mode = (settings.get("timePolicyMode", req_time_mode) or req_time_mode).lower()
-                    req_spl_model = settings.get("splModel", req_spl_model)
-                    req_vql_model = settings.get("vqlModel", req_vql_model)
-                    req_vql_model = settings.get("vqlModel", req_vql_model)
-                    req_summary_model = settings.get("summaryModel", req_summary_model)
-                    req_coder_model = settings.get("coderModel", req_coder_model)
-                    try:
-                        req_raw_limit = int(settings.get("rawResultLimit", req_raw_limit))
-                    except Exception:
-                        req_raw_limit = 50
-                else:
+                # Expect plain text or JSON payload with the user's question
+                incoming = await websocket.receive_text()
+                print(f"Received message: {incoming[:100]}...")
+                # Parse either plain text or JSON payload with settings
+                req_default_index = DEFAULT_INDEX
+                req_time_mode = TIME_POLICY_MODE
+                req_spl_model = OLLAMA_MODEL
+                req_vql_model = VQL_MODEL
+                req_summary_model = SUMMARY_MODEL
+                req_coder_model = CODER_MODEL
+                req_raw_limit = 50
+                try:
+                    data = json.loads(incoming)
+                    if isinstance(data, dict) and ("question" in data or data.get("type") == "ask"):
+                        question = data.get("question") or data.get("q") or ""
+                        settings = data.get("settings") or {}
+                        req_default_index = settings.get("defaultIndex", req_default_index)
+                        req_time_mode = (settings.get("timePolicyMode", req_time_mode) or req_time_mode).lower()
+                        req_spl_model = settings.get("splModel", req_spl_model)
+                        req_vql_model = settings.get("vqlModel", req_vql_model)
+                        req_vql_model = settings.get("vqlModel", req_vql_model)
+                        req_summary_model = settings.get("summaryModel", req_summary_model)
+                        req_coder_model = settings.get("coderModel", req_coder_model)
+                        try:
+                            req_raw_limit = int(settings.get("rawResultLimit", req_raw_limit))
+                        except Exception:
+                            req_raw_limit = 50
+                    else:
+                        question = incoming
+                except Exception:
+                    # Treat as plain text
                     question = incoming
-            except Exception:
-                # Treat as plain text
-                question = incoming
 
-            # 1) Notify start
-            await websocket.send_json({
-                "type": "activity",
-                "title": "Analyzing question",
-                "detail": question,
-                "status": "running",
-                "icon": "search",
-            })
+                print(f"Processing question: {question}")
 
-            # 2) Route to best tool
-            tool_choice = await _route_tool(question)
-            await websocket.send_json({
-                "type": "activity",
-                "title": "Tool selected",
-                "detail": tool_choice,
-                "status": "done",
-                "icon": "robot",
-            })
+                # 1) Notify start
+                await websocket.send_json({
+                    "type": "activity",
+                    "title": "Analyzing question",
+                    "detail": question,
+                    "status": "running",
+                    "icon": "search",
+                })
+
+                # 2) Route to best tool
+                print("Routing tool...")
+                tool_choice = await _route_tool(question)
+                print(f"Tool selected: {tool_choice}")
+                await websocket.send_json({
+                    "type": "activity",
+                    "title": "Tool selected",
+                    "detail": tool_choice,
+                    "status": "done",
+                    "icon": "robot",
+                })
+            except Exception as e:
+                print(f"Error in WebSocket loop: {e}")
+                import traceback
+                traceback.print_exc()
+                await websocket.send_json({
+                    "type": "error",
+                    "title": "Server Error",
+                    "detail": str(e)
+                })
+                continue
 
             if tool_choice == "check_virustotal":
                 # Extract IOC from question using simple heuristics or LLM
