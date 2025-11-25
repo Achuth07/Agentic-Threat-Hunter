@@ -211,8 +211,17 @@ def build_red_team_agent(model_name: str):
             return {"messages": [ToolMessage(tool_call_id=tool_call["id"], content=str(result))]}
         
         # Check for JSON in content (Hallucinated tool call)
-        content = last_message.content
-        if content.strip().startswith("{") and "atomic_red_team" in content:
+        content = last_message.content.strip()
+        # Strip markdown code blocks if present
+        if content.startswith("```json"):
+            content = content[7:]
+        elif content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        content = content.strip()
+
+        if content.startswith("{") and "atomic_red_team" in content:
             try:
                 import json
                 data = json.loads(content)
@@ -255,12 +264,34 @@ def build_red_team_agent(model_name: str):
         
         return {"messages": []}
 
+    def should_continue(state: AgentState):
+        messages = state["messages"]
+        last_message = messages[-1]
+        if last_message.tool_calls:
+            return "tools"
+        
+        # Check for hallucinated tool calls
+        content = last_message.content.strip()
+        if content.startswith("```json"):
+            content = content[7:]
+        elif content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        content = content.strip()
+        
+        if content.startswith("{") and "atomic_red_team" in content:
+            return "tools"
+            
+        return END
+
     workflow = StateGraph(AgentState)
     workflow.add_node("agent", red_team_node)
     workflow.add_node("tools", tool_node)
     
-    workflow.add_edge("agent", "tools")
-    workflow.add_edge("tools", END)
+    workflow.add_conditional_edges("agent", should_continue, ["tools", END])
+    workflow.add_edge("tools", "agent")
+    
     workflow.set_entry_point("agent")
     
     return workflow.compile()
@@ -283,43 +314,19 @@ Your goal is to find or create detection rules (Sigma, SPL, VQL).
 
 def build_hunter_agent(model_name: str, splunk_fn, velociraptor_fn):
     """
-    Creates the Hunter agent.
-    For simplicity in this hierarchical setup, we will use a ReAct agent that has access 
-    to the Splunk and Velociraptor tools.
-    
-    Note: To strictly preserve the 'Reflection Loop' logic from the previous iteration,
-    we would need to nest that entire StateGraph here. 
-    However, a ReAct agent with a good system prompt is often sufficient and easier to manage 
-    as a sub-agent. Let's try ReAct first.
+    Creates the Hunter agent with custom graph to handle tool call quirks.
     """
     
     # Wrap the raw functions as LangChain tools
     from langchain_core.tools import tool
+    from langchain_core.messages import ToolMessage, AIMessage
 
-    @tool
-    def search_splunk(query: str) -> str:
-        """Execute a Splunk SPL search. Input is the SPL string."""
-        # We need to handle the async/sync nature of the passed function
-        # For ReAct, it expects synchronous tools or async tools.
-        # We'll assume the executor handles the bridging or we use a wrapper.
-        # Since we are inside an async node, we can call async functions if the tool supports it.
-        # But standard LangChain tools are often sync.
-        # Let's assume the passed 'splunk_fn' can be called.
-        # If it's async, we might need a bridge.
-        # For now, let's define this as a placeholder and handle the execution in the tool definition.
-        pass 
-
-    # Actually, we should pass the actual tool instances or wrappers.
-    # Let's create simple wrappers.
-    
     class SplunkTool(BaseModel):
         query: str = Field(description="The SPL query to execute")
 
     @tool("execute_splunk_search", args_schema=SplunkTool)
     def execute_splunk_search(query: str):
         """Execute a Splunk SPL query to find historical logs."""
-        # This will be patched at runtime or we need to pass the callable properly.
-        # A cleaner way is to pass the tools list to this builder.
         return splunk_fn(query)
 
     class VeloTool(BaseModel):
@@ -332,15 +339,102 @@ def build_hunter_agent(model_name: str, splunk_fn, velociraptor_fn):
 
     tools = [execute_splunk_search, run_velociraptor_query]
 
-    system_prompt = """You are a Threat Hunter.
-Your goal is to find evidence of malicious activity in Splunk logs or on endpoints via Velociraptor.
-1. Generate a valid SPL or VQL query based on the instructions.
-2. Execute the query.
-3. If it fails, analyze the error and retry.
-4. Summarize your findings (e.g., "Found 5 failed logins for user X").
-"""
-    graph = create_react_agent(ChatOllama(model=model_name), tools, prompt=system_prompt)
-    return graph
+    async def hunter_node(state: AgentState):
+        messages = state["messages"]
+        llm = ChatOllama(model=model_name).bind_tools(tools)
+        response = await llm.ainvoke(messages)
+        return {"messages": [response]}
+
+    async def tool_node(state: AgentState):
+        messages = state["messages"]
+        last_message = messages[-1]
+        
+        # Check for standard tool calls
+        if last_message.tool_calls:
+            results = []
+            for tool_call in last_message.tool_calls:
+                t_name = tool_call["name"]
+                t_args = tool_call["args"]
+                
+                result = "Error: Unknown tool"
+                if t_name == "execute_splunk_search":
+                    q = t_args.get("query")
+                    if q: result = splunk_fn(q)
+                    else: result = "Error: Missing query"
+                elif t_name == "run_velociraptor_query":
+                    q = t_args.get("query")
+                    if q: result = velociraptor_fn(q)
+                    else: result = "Error: Missing query"
+                
+                results.append(ToolMessage(tool_call_id=tool_call["id"], content=str(result)))
+            return {"messages": results}
+
+        # Check for JSON in content (Hallucinated tool call)
+        content = last_message.content.strip()
+        # Strip markdown code blocks if present
+        if content.startswith("```json"):
+            content = content[7:]
+        elif content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        content = content.strip()
+
+        if content.startswith("{") and ("execute_splunk_search" in content or "run_velociraptor_query" in content):
+            try:
+                import json
+                data = json.loads(content)
+                name = data.get("name")
+                args = data.get("arguments", {})
+                
+                result = "Error: Unknown tool"
+                if name == "execute_splunk_search":
+                    q = args.get("query")
+                    if q: result = splunk_fn(q)
+                    else: result = "Error: Missing query"
+                elif name == "run_velociraptor_query":
+                    q = args.get("query")
+                    if q: result = velociraptor_fn(q)
+                    else: result = "Error: Missing query"
+                
+                # Return HumanMessage for hallucinated calls so the agent sees it as a result to summarize
+                return {"messages": [HumanMessage(content=f"Tool Execution Result: {result}")]}
+            except Exception as e:
+                print(f"Failed to parse hallucinated tool call: {e}")
+        
+        return {"messages": []}
+
+    def should_continue(state: AgentState):
+        messages = state["messages"]
+        last_message = messages[-1]
+        if last_message.tool_calls:
+            return "tools"
+        
+        # Check for hallucinated tool calls
+        content = last_message.content.strip()
+        if content.startswith("```json"):
+            content = content[7:]
+        elif content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        content = content.strip()
+        
+        if content.startswith("{") and ("execute_splunk_search" in content or "run_velociraptor_query" in content):
+            return "tools"
+            
+        return END
+
+    workflow = StateGraph(AgentState)
+    workflow.add_node("agent", hunter_node)
+    workflow.add_node("tools", tool_node)
+    
+    workflow.add_conditional_edges("agent", should_continue, ["tools", END])
+    workflow.add_edge("tools", "agent")
+    
+    workflow.set_entry_point("agent")
+    
+    return workflow.compile()
 
 
 # --- Main Graph Construction ---

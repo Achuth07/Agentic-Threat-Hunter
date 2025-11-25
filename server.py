@@ -15,7 +15,7 @@ from splunklib.binding import HTTPError, AuthenticationError
 from tools.velociraptor_tool import run_velociraptor_query
 from tools.virustotal_tool import check_virustotal
 from agent.hierarchical_agent import build_hierarchical_graph
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, ToolMessage, AIMessage
 # from agent.multitool_agent import build_multitool_graph # Legacy
 
 
@@ -743,17 +743,9 @@ async def ws_chat(websocket: WebSocket):
                     "icon": "search",
                 }))
 
-                # 2) Route to best tool
-                print("Routing tool...")
-                tool_choice = await _route_tool(question)
-                print(f"Tool selected: {tool_choice}")
-                await websocket.send_json(_add_timestamp({
-                    "type": "activity",
-                    "title": "Tool selected",
-                    "detail": tool_choice,
-                    "status": "done",
-                    "icon": "robot",
-                }))
+                # Legacy routing logic removed to enforce Hierarchical Agent usage
+                # This prevents "Tool selected: execute_splunk_search" messages for non-Splunk tasks.
+                pass
             except Exception as e:
                 print(f"Error in WebSocket loop: {e}")
                 import traceback
@@ -763,237 +755,6 @@ async def ws_chat(websocket: WebSocket):
                     "title": "Server Error",
                     "detail": str(e)
                 }))
-                continue
-
-            if tool_choice == "check_virustotal":
-                # Extract IOC from question using simple heuristics or LLM
-                await websocket.send_json(_add_timestamp({
-                    "type": "activity",
-                    "title": "Extracting IOC",
-                    "detail": "Identifying IP/hash/URL from question",
-                    "status": "running",
-                    "icon": "search",
-                }))
-                
-                # Simple extraction: look for common patterns
-                import re
-                q = question
-                # IP pattern
-                ip_match = re.search(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", q)
-                # Hash pattern (MD5=32 hex, SHA1=40 hex, SHA256=64 hex)
-                hash_match = re.search(r"\b[a-fA-F0-9]{32}\b|\b[a-fA-F0-9]{40}\b|\b[a-fA-F0-9]{64}\b", q)
-                # URL pattern (http/https)
-                url_match = re.search(r"https?://[^\s]+", q)
-                
-                ioc = None
-                ioc_type = "hash"
-                if ip_match:
-                    ioc = ip_match.group(0)
-                    ioc_type = "ip"
-                elif url_match:
-                    ioc = url_match.group(0)
-                    ioc_type = "url"
-                elif hash_match:
-                    ioc = hash_match.group(0)
-                    ioc_type = "hash"
-                
-                if not ioc:
-                    await websocket.send_json(_add_timestamp({
-                        "type": "error",
-                        "title": "IOC extraction failed",
-                        "detail": "Could not identify IP, hash, or URL in question",
-                    }))
-                    continue
-                
-                await websocket.send_json(_add_timestamp({
-                    "type": "activity",
-                    "title": "Extracting IOC",
-                    "detail": f"{ioc_type.upper()}: {ioc}",
-                    "status": "done",
-                    "icon": "search",
-                }))
-                
-                # Query VirusTotal
-                await websocket.send_json(_add_timestamp({
-                    "type": "activity",
-                    "title": "Querying VirusTotal",
-                    "detail": f"Checking {ioc_type} reputation",
-                    "status": "running",
-                    "icon": "shield",
-                }))
-                
-                try:
-                    vt_result = await run_in_threadpool(check_virustotal, ioc, ioc_type)
-                    await websocket.send_json(_add_timestamp({
-                        "type": "activity",
-                        "title": "Querying VirusTotal",
-                        "detail": f"{vt_result.get('malicious', 0)}/{vt_result.get('total', 0)} vendors flagged as malicious",
-                        "status": "done",
-                        "icon": "shield",
-                    }))
-                    
-                    # Summarize
-                    await websocket.send_json(_add_timestamp({
-                        "type": "activity",
-                        "title": "Summarizing threat intel",
-                        "detail": "Generating human-readable overview",
-                        "status": "running",
-                        "icon": "robot",
-                    }))
-                    
-                    if vt_result.get("success"):
-                        mal = vt_result.get("malicious", 0)
-                        total = vt_result.get("total", 0)
-                        if mal > 0:
-                            summary_body = f"The {ioc_type.upper()} {ioc} is flagged as malicious by {mal}/{total} vendors on VirusTotal."
-                        else:
-                            summary_body = f"The {ioc_type.upper()} {ioc} is clean (0/{total} vendors flagged it)."
-                        if vt_result.get("message"):
-                            summary_body += f" {vt_result['message']}"
-                    else:
-                        summary_body = f"VirusTotal lookup failed: {vt_result.get('error', 'Unknown error')}"
-                    
-                    formatted_summary = f"Threat Intel Summary: {summary_body}"
-                    await websocket.send_json(_add_timestamp({
-                        "type": "activity",
-                        "title": "Summarizing threat intel",
-                        "detail": formatted_summary[:180] + ("…" if len(formatted_summary) > 180 else ""),
-                        "status": "done",
-                        "icon": "robot",
-                    }))
-
-                    # If the IOC is an IP and malicious, perform follow-on hunts
-                    proceed_hunt = vt_result.get("success") and vt_result.get("malicious", 0) > 0 and ioc_type == "ip"
-                    if not proceed_hunt:
-                        # Send VirusTotal-only final payload
-                        await websocket.send_json({
-                            "type": "final",
-                            "source": "virustotal",
-                            "spl": None,
-                            "vql": None,
-                            "ioc": ioc,
-                            "ioc_type": ioc_type,
-                            "count": 1,
-                            "results": [vt_result],
-                            "summary": formatted_summary,
-                        })
-                        continue
-
-                    # Begin threat hunt sequence
-                    await websocket.send_json(_add_timestamp({
-                        "type": "activity",
-                        "title": "Malicious verdict: starting threat hunt",
-                        "detail": f"IOC {ioc} flagged by VirusTotal; proceeding with endpoint and SIEM hunts",
-                        "status": "done",
-                        "icon": "alert",
-                    }))
-
-                    # 1) Velociraptor: Check active connections to the IOC IP
-                    velo_vql = f'SELECT LocalAddress, LocalPort, RemoteAddress, State, Pid, Name FROM netstat() WHERE RemoteAddress = "{ioc}"'
-                    # Announce VQL (consistent with existing flow)
-                    await websocket.send_json(_add_timestamp({
-                        "type": "activity",
-                        "title": "VQL generated",
-                        "detail": velo_vql,
-                        "status": "done",
-                        "icon": "code",
-                    }))
-                    # Execute Velociraptor query (use standard title to correlate "Search completed")
-                    await websocket.send_json(_add_timestamp({
-                        "type": "activity",
-                        "title": "Executing Velociraptor query",
-                        "detail": "Querying endpoint via Velociraptor",
-                        "status": "running",
-                        "icon": "bolt",
-                    }))
-                    velo_results_list = []
-                    try:
-                        velo_raw = await run_in_threadpool(run_velociraptor_query, velo_vql)
-                        try:
-                            velo_results_list = json.loads(velo_raw)
-                        except Exception:
-                            velo_results_list = [{"raw": velo_raw}]
-                        await websocket.send_json(_add_timestamp({
-                            "type": "activity",
-                            "title": "Search completed",
-                            "detail": f"{len(velo_results_list) if isinstance(velo_results_list, list) else 1} rows returned",
-                            "status": "done",
-                            "icon": "check",
-                        }))
-                    except Exception as e:
-                        await websocket.send_json(_add_timestamp({
-                            "type": "activity",
-                            "title": "Executing Velociraptor query",
-                            "detail": f"Error: {str(e)}",
-                            "status": "done",
-                            "icon": "x",
-                        }))
-
-                    # 2) Splunk: Hunt for historical communication with the IOC IP
-                    spl_hunt = f'search index=* ("{ioc}") | stats earliest(_time) as first_seen, latest(_time) as last_seen, count by host, sourcetype | convert ctime(first_seen) ctime(last_seen)'
-                    # Announce SPL (consistent with existing flow)
-                    await websocket.send_json(_add_timestamp({
-                        "type": "activity",
-                        "title": "Final SPL query to Splunk",
-                        "detail": spl_hunt,
-                        "status": "done",
-                        "icon": "code",
-                    }))
-                    await websocket.send_json(_add_timestamp({
-                        "type": "activity",
-                        "title": "Executing Splunk search",
-                        "detail": "Running query against Splunk",
-                        "status": "running",
-                        "icon": "search",
-                    }))
-                    
-                    splunk_rows = []
-                    try:
-                        splunk_rows = await run_in_threadpool(_execute_splunk_search, spl_hunt)
-                        await websocket.send_json(_add_timestamp({
-                            "type": "activity",
-                            "title": "Search completed",
-                            "detail": f"{len(splunk_rows)} events found",
-                            "status": "done",
-                            "icon": "check",
-                        }))
-                    except Exception as e:
-                        await websocket.send_json(_add_timestamp({
-                            "type": "activity",
-                            "title": "Executing Splunk search",
-                            "detail": f"Error: {str(e)}",
-                            "status": "done",
-                            "icon": "x",
-                        }))
-
-                    # Combine results
-                    combined_summary = f"Threat Hunt Results for {ioc}:\n"
-                    combined_summary += f"- VirusTotal: {mal}/{total} malicious.\n"
-                    combined_summary += f"- Endpoint (Velociraptor): Found {len(velo_results_list)} active connections.\n"
-                    combined_summary += f"- SIEM (Splunk): Found {len(splunk_rows)} historical events.\n"
-                    
-                    await websocket.send_json({
-                        "type": "final",
-                        "source": "combined_hunt",
-                        "spl": spl_hunt,
-                        "vql": velo_vql,
-                        "ioc": ioc,
-                        "ioc_type": ioc_type,
-                        "count": len(splunk_rows) + len(velo_results_list),
-                        "results": {
-                            "virustotal": vt_result,
-                            "velociraptor": velo_results_list,
-                            "splunk": splunk_rows
-                        },
-                        "summary": combined_summary,
-                    })
-
-                except Exception as e:
-                    await websocket.send_json(_add_timestamp({
-                        "type": "error",
-                        "title": "Threat hunt error",
-                        "detail": str(e),
-                    }))
                 continue
 
             # 3) Execute via Hierarchical Agent Graph
@@ -1053,6 +814,15 @@ async def ws_chat(websocket: WebSocket):
 
             # Start execution
             try:
+                # Mark system start as done
+                await websocket.send_json(_add_timestamp({
+                    "type": "activity",
+                    "title": "Agent System Started",
+                    "detail": "System initialized",
+                    "status": "done",
+                    "icon": "brain",
+                }))
+
                 # Use astream which properly handles interrupts
                 async for chunk in agent_graph.astream(initial_state, config=config):
                     # chunk is a dict with node names as keys
@@ -1074,12 +844,20 @@ async def ws_chat(websocket: WebSocket):
                                         "detail": f"Supervisor -> {next_agent}",
                                         "status": "done",
                                     }))
+                            
+                            # Mark Supervisor as done
+                            await websocket.send_json(_add_timestamp({
+                                "type": "activity",
+                                "title": "Supervisor",
+                                "detail": "Planning complete",
+                                "status": "done",
+                            }))
                         elif node_name in ["ThreatIntel", "Hunter", "RedTeam", "Detection"]:
                             await websocket.send_json(_add_timestamp({
                                 "type": "activity", 
                                 "title": f"{node_name} Agent", 
                                 "detail": "Task Completed", 
-                                "status": "success"
+                                "status": "done"
                             }))
                 
                 # Check final state
@@ -1119,7 +897,7 @@ async def ws_chat(websocket: WebSocket):
                                                 "type": "activity", 
                                                 "title": f"{node_name} Agent", 
                                                 "detail": "Task Completed", 
-                                                "status": "success"
+                                                "status": "done"
                                             }))
                                 break
                             elif data.get("type") == "deny":
@@ -1135,12 +913,37 @@ async def ws_chat(websocket: WebSocket):
                 # Final Result
                 snapshot = agent_graph.get_state(config)
                 if snapshot.values and "messages" in snapshot.values:
-                    final_msg = snapshot.values["messages"][-1]
+                    messages = snapshot.values["messages"]
+                    final_msg = messages[-1]
+                    summary = final_msg.content
+                    
+                    results = []
+                    # Extract raw results from previous tool messages
+                    for msg in reversed(messages[:-1]):
+                        if isinstance(msg, (ToolMessage, HumanMessage)):
+                            content = str(msg.content)
+                            # Clean up "Tool Execution Result: " prefix if present
+                            if content.startswith("Tool Execution Result: "):
+                                content = content.replace("Tool Execution Result: ", "", 1)
+                            
+                            try:
+                                # Try to parse JSON if possible
+                                parsed = json.loads(content)
+                                results.append(parsed)
+                            except:
+                                results.append(content)
+                        
+                        # Stop if we hit the previous AI message (start of this turn)
+                        if isinstance(msg, AIMessage):
+                            break
+                    
+                    results.reverse()
+
                     await websocket.send_json({
                         "type": "final",
                         "source": "agent",
-                        "summary": final_msg.content,
-                        "results": [] # Raw results are harder to extract from ReAct, using summary
+                        "summary": summary,
+                        "results": results
                     })
 
             except Exception as e:
