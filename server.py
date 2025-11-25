@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+from datetime import datetime
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -13,7 +14,10 @@ import splunklib.results as results
 from splunklib.binding import HTTPError, AuthenticationError
 from tools.velociraptor_tool import run_velociraptor_query
 from tools.virustotal_tool import check_virustotal
-from agent.multitool_agent import build_multitool_graph
+from agent.hierarchical_agent import build_hierarchical_graph
+from langchain_core.messages import HumanMessage
+# from agent.multitool_agent import build_multitool_graph # Legacy
+
 
 # Load env
 load_dotenv()
@@ -681,6 +685,13 @@ def health_sigma():
         }
 
 
+def _add_timestamp(message_dict: dict) -> dict:
+    """Add a timestamp to a WebSocket message if it's an activity type."""
+    if message_dict.get("type") in ["activity", "error", "approval_required"]:
+        message_dict["timestamp"] = datetime.utcnow().isoformat() + "Z"
+    return message_dict
+
+
 @app.websocket("/ws")
 async def ws_chat(websocket: WebSocket):
     await websocket.accept()
@@ -724,45 +735,45 @@ async def ws_chat(websocket: WebSocket):
                 print(f"Processing question: {question}")
 
                 # 1) Notify start
-                await websocket.send_json({
+                await websocket.send_json(_add_timestamp({
                     "type": "activity",
                     "title": "Analyzing question",
                     "detail": question,
                     "status": "running",
                     "icon": "search",
-                })
+                }))
 
                 # 2) Route to best tool
                 print("Routing tool...")
                 tool_choice = await _route_tool(question)
                 print(f"Tool selected: {tool_choice}")
-                await websocket.send_json({
+                await websocket.send_json(_add_timestamp({
                     "type": "activity",
                     "title": "Tool selected",
                     "detail": tool_choice,
                     "status": "done",
                     "icon": "robot",
-                })
+                }))
             except Exception as e:
                 print(f"Error in WebSocket loop: {e}")
                 import traceback
                 traceback.print_exc()
-                await websocket.send_json({
+                await websocket.send_json(_add_timestamp({
                     "type": "error",
                     "title": "Server Error",
                     "detail": str(e)
-                })
+                }))
                 continue
 
             if tool_choice == "check_virustotal":
                 # Extract IOC from question using simple heuristics or LLM
-                await websocket.send_json({
+                await websocket.send_json(_add_timestamp({
                     "type": "activity",
                     "title": "Extracting IOC",
                     "detail": "Identifying IP/hash/URL from question",
                     "status": "running",
                     "icon": "search",
-                })
+                }))
                 
                 # Simple extraction: look for common patterns
                 import re
@@ -787,48 +798,48 @@ async def ws_chat(websocket: WebSocket):
                     ioc_type = "hash"
                 
                 if not ioc:
-                    await websocket.send_json({
+                    await websocket.send_json(_add_timestamp({
                         "type": "error",
                         "title": "IOC extraction failed",
                         "detail": "Could not identify IP, hash, or URL in question",
-                    })
+                    }))
                     continue
                 
-                await websocket.send_json({
+                await websocket.send_json(_add_timestamp({
                     "type": "activity",
                     "title": "Extracting IOC",
                     "detail": f"{ioc_type.upper()}: {ioc}",
                     "status": "done",
                     "icon": "search",
-                })
+                }))
                 
                 # Query VirusTotal
-                await websocket.send_json({
+                await websocket.send_json(_add_timestamp({
                     "type": "activity",
                     "title": "Querying VirusTotal",
                     "detail": f"Checking {ioc_type} reputation",
                     "status": "running",
                     "icon": "shield",
-                })
+                }))
                 
                 try:
                     vt_result = await run_in_threadpool(check_virustotal, ioc, ioc_type)
-                    await websocket.send_json({
+                    await websocket.send_json(_add_timestamp({
                         "type": "activity",
                         "title": "Querying VirusTotal",
                         "detail": f"{vt_result.get('malicious', 0)}/{vt_result.get('total', 0)} vendors flagged as malicious",
                         "status": "done",
                         "icon": "shield",
-                    })
+                    }))
                     
                     # Summarize
-                    await websocket.send_json({
+                    await websocket.send_json(_add_timestamp({
                         "type": "activity",
                         "title": "Summarizing threat intel",
                         "detail": "Generating human-readable overview",
                         "status": "running",
                         "icon": "robot",
-                    })
+                    }))
                     
                     if vt_result.get("success"):
                         mal = vt_result.get("malicious", 0)
@@ -843,13 +854,13 @@ async def ws_chat(websocket: WebSocket):
                         summary_body = f"VirusTotal lookup failed: {vt_result.get('error', 'Unknown error')}"
                     
                     formatted_summary = f"Threat Intel Summary: {summary_body}"
-                    await websocket.send_json({
+                    await websocket.send_json(_add_timestamp({
                         "type": "activity",
                         "title": "Summarizing threat intel",
                         "detail": formatted_summary[:180] + ("…" if len(formatted_summary) > 180 else ""),
                         "status": "done",
                         "icon": "robot",
-                    })
+                    }))
 
                     # If the IOC is an IP and malicious, perform follow-on hunts
                     proceed_hunt = vt_result.get("success") and vt_result.get("malicious", 0) > 0 and ioc_type == "ip"
@@ -869,32 +880,32 @@ async def ws_chat(websocket: WebSocket):
                         continue
 
                     # Begin threat hunt sequence
-                    await websocket.send_json({
+                    await websocket.send_json(_add_timestamp({
                         "type": "activity",
                         "title": "Malicious verdict: starting threat hunt",
                         "detail": f"IOC {ioc} flagged by VirusTotal; proceeding with endpoint and SIEM hunts",
                         "status": "done",
                         "icon": "alert",
-                    })
+                    }))
 
                     # 1) Velociraptor: Check active connections to the IOC IP
                     velo_vql = f'SELECT LocalAddress, LocalPort, RemoteAddress, State, Pid, Name FROM netstat() WHERE RemoteAddress = "{ioc}"'
                     # Announce VQL (consistent with existing flow)
-                    await websocket.send_json({
+                    await websocket.send_json(_add_timestamp({
                         "type": "activity",
                         "title": "VQL generated",
                         "detail": velo_vql,
                         "status": "done",
                         "icon": "code",
-                    })
+                    }))
                     # Execute Velociraptor query (use standard title to correlate "Search completed")
-                    await websocket.send_json({
+                    await websocket.send_json(_add_timestamp({
                         "type": "activity",
                         "title": "Executing Velociraptor query",
                         "detail": "Querying endpoint via Velociraptor",
                         "status": "running",
                         "icon": "bolt",
-                    })
+                    }))
                     velo_results_list = []
                     try:
                         velo_raw = await run_in_threadpool(run_velociraptor_query, velo_vql)
@@ -902,58 +913,58 @@ async def ws_chat(websocket: WebSocket):
                             velo_results_list = json.loads(velo_raw)
                         except Exception:
                             velo_results_list = [{"raw": velo_raw}]
-                        await websocket.send_json({
+                        await websocket.send_json(_add_timestamp({
                             "type": "activity",
                             "title": "Search completed",
                             "detail": f"{len(velo_results_list) if isinstance(velo_results_list, list) else 1} rows returned",
                             "status": "done",
                             "icon": "check",
-                        })
+                        }))
                     except Exception as e:
-                        await websocket.send_json({
+                        await websocket.send_json(_add_timestamp({
                             "type": "activity",
                             "title": "Executing Velociraptor query",
                             "detail": f"Error: {str(e)}",
                             "status": "done",
                             "icon": "x",
-                        })
+                        }))
 
                     # 2) Splunk: Hunt for historical communication with the IOC IP
                     spl_hunt = f'search index=* ("{ioc}") | stats earliest(_time) as first_seen, latest(_time) as last_seen, count by host, sourcetype | convert ctime(first_seen) ctime(last_seen)'
                     # Announce SPL (consistent with existing flow)
-                    await websocket.send_json({
+                    await websocket.send_json(_add_timestamp({
                         "type": "activity",
                         "title": "Final SPL query to Splunk",
                         "detail": spl_hunt,
                         "status": "done",
                         "icon": "code",
-                    })
-                    await websocket.send_json({
+                    }))
+                    await websocket.send_json(_add_timestamp({
                         "type": "activity",
                         "title": "Executing Splunk search",
                         "detail": "Running query against Splunk",
                         "status": "running",
                         "icon": "search",
-                    })
+                    }))
                     
                     splunk_rows = []
                     try:
                         splunk_rows = await run_in_threadpool(_execute_splunk_search, spl_hunt)
-                        await websocket.send_json({
+                        await websocket.send_json(_add_timestamp({
                             "type": "activity",
                             "title": "Search completed",
                             "detail": f"{len(splunk_rows)} events found",
                             "status": "done",
                             "icon": "check",
-                        })
+                        }))
                     except Exception as e:
-                        await websocket.send_json({
+                        await websocket.send_json(_add_timestamp({
                             "type": "activity",
                             "title": "Executing Splunk search",
                             "detail": f"Error: {str(e)}",
                             "status": "done",
                             "icon": "x",
-                        })
+                        }))
 
                     # Combine results
                     combined_summary = f"Threat Hunt Results for {ioc}:\n"
@@ -978,173 +989,160 @@ async def ws_chat(websocket: WebSocket):
                     })
 
                 except Exception as e:
-                    await websocket.send_json({
+                    await websocket.send_json(_add_timestamp({
                         "type": "error",
                         "title": "Threat hunt error",
                         "detail": str(e),
-                    })
+                    }))
                 continue
 
-            # 3) Execute other tools via the Agent Graph
-            # Define callbacks for the graph
-            def _graph_velo(vql: str) -> str:
-                # Use the .func attribute if it's a LangChain tool, otherwise call directly
-                fn = getattr(run_velociraptor_query, "func", run_velociraptor_query)
-                return fn(vql)
+            # 3) Execute via Hierarchical Agent Graph
+            
+            # Define callbacks/wrappers for the graph
+            # The Hunter agent expects tools that can be called.
+            # Since we are in async context, we need to be careful.
+            # The ReAct agent in LangGraph usually handles async tools if defined properly.
+            
+            def _sync_velo_wrapper(vql: str) -> str:
+                # Wrapper to make it sync-compatible if needed, or just pass the function
+                # Ideally, we pass the async function and let LangChain handle it.
+                return run_velociraptor_query(vql)
+
+            def _sync_splunk_wrapper(spl: str) -> str:
+                # Wrapper for Splunk
+                # _execute_splunk_search returns list[dict], we need to stringify it for the LLM agent
+                try:
+                    results = _execute_splunk_search(spl)
+                    return json.dumps(results, default=str)[:10000] # Truncate for context window
+                except Exception as e:
+                    return f"Error: {str(e)}"
 
             # Build the graph
-            agent_graph = build_multitool_graph(
-                splunk_execute_fn=_execute_splunk_search,
-                velociraptor_fn=_graph_velo,
-                router_model=req_summary_model, # Use summary model for routing as it's usually smarter/faster
-                spl_model=req_spl_model,
-                vql_model=req_vql_model,
-                coder_model=req_coder_model,
+            # We use the same model for supervisor and workers for now, or split them
+            agent_graph = build_hierarchical_graph(
+                splunk_execute_fn=_sync_splunk_wrapper,
+                velociraptor_fn=_sync_velo_wrapper,
+                supervisor_model=req_coder_model, # Supervisor needs a smart model
+                worker_model=req_summary_model,   # Workers can use the faster model
             )
 
             # Initial state
             initial_state = {
-                "user_query": question,
-                "tool_choice": tool_choice,
-                "retry_count": 0,
-                "messages": [],
-                "error": None
+                "messages": [HumanMessage(content=question)],
+                "next_agent": "",
+                "instructions": ""
             }
 
             # Run the graph
-            # We use astream to get updates if possible, but for now invoke is safer for synchronous-like flow
-            # or we can just use invoke since the graph steps are synchronous except for the LLM calls which are blocking in this setup
+            # We use astream to get updates
             
             # Notify execution start
-            await websocket.send_json({
+            await websocket.send_json(_add_timestamp({
                 "type": "activity",
-                "title": "Executing tool",
-                "detail": f"Running {tool_choice}...",
+                "title": "Agent System Started",
+                "detail": "Supervisor is planning...",
                 "status": "running",
-                "icon": "bolt",
-            })
+                "icon": "brain",
+            }))
 
+            # We need to persist the thread_id to handle interrupts/resuming
+            # For this simple WS implementation, we can use a static thread_id or generate one
+            import uuid
+            thread_id = str(uuid.uuid4())
+            config = {"configurable": {"thread_id": thread_id}}
+
+            # Start execution
             try:
-                # Use astream to get intermediate steps (like generated query)
-                final_state = initial_state.copy()
+                # Use astream which properly handles interrupts
+                async for chunk in agent_graph.astream(initial_state, config=config):
+                    # chunk is a dict with node names as keys
+                    for node_name, node_output in chunk.items():
+                        if node_name == "Supervisor":
+                            await websocket.send_json(_add_timestamp({
+                                "type": "activity",
+                                "title": "Supervisor",
+                                "detail": "Planning next step...",
+                                "status": "running",
+                            }))
+                            # Check if supervisor made a routing decision
+                            if "next_agent" in node_output:
+                                next_agent = node_output["next_agent"]
+                                if next_agent != "FINISH":
+                                    await websocket.send_json(_add_timestamp({
+                                        "type": "activity",
+                                        "title": "Delegating Task",
+                                        "detail": f"Supervisor -> {next_agent}",
+                                        "status": "done",
+                                    }))
+                        elif node_name in ["ThreatIntel", "Hunter", "RedTeam", "Detection"]:
+                            await websocket.send_json(_add_timestamp({"type": "activity", "title": f"{node_name} Agent", "detail": "Working...", "status": "running"}))
                 
-                # We use astream to iterate over the graph steps
-                async for output in agent_graph.astream(initial_state):
-                    for node_name, state_update in output.items():
-                        # Update our local view of the state
-                        final_state.update(state_update)
+                # Check final state
+                snapshot = agent_graph.get_state(config)
+                if snapshot.next:
+                    # If there is a 'next' step, it means we were interrupted (HITL)
+                    # For RedTeam, this is expected.
+                    next_node = snapshot.next[0]
+                    if next_node == "RedTeam":
+                        await websocket.send_json(_add_timestamp({
+                            "type": "approval_required",
+                            "title": "Approval Required",
+                            "detail": "Red Team Agent wants to execute an attack simulation.",
+                            "thread_id": thread_id,
+                            "next_node": "RedTeam"
+                        }))
+                        # We stop here and wait for a new WS message from client
+                        # In a real app, we'd store the state/thread_id in a DB.
+                        # Here, we keep the WS open and wait.
                         
-                        if node_name == "generate_query":
-                            # Check for generated queries and notify UI
-                            spl = state_update.get("spl_query")
-                            vql = state_update.get("vql_query")
-                            web_q = state_update.get("web_query")
-                            web_url = state_update.get("web_url")
-                            
-                            detail = ""
-                            title = "Query Generated"
-                            
-                            if spl:
-                                detail = spl
-                                title = "Generated SPL"
-                            elif vql:
-                                detail = vql
-                                title = "Generated VQL"
-                            elif web_q:
-                                detail = web_q
-                                title = "Web Search Query"
-                            elif web_url:
-                                detail = web_url
-                                title = "Visiting URL"
-                                
-                            if detail:
-                                await websocket.send_json({
+                        # Loop to wait for approval
+                        while True:
+                            data = await websocket.receive_json()
+                            if data.get("type") == "approve":
+                                await websocket.send_json(_add_timestamp({
                                     "type": "activity",
-                                    "title": title,
-                                    "detail": detail,
+                                    "title": "Approved",
+                                    "detail": "Resuming execution...",
                                     "status": "done",
-                                    "icon": "code",
-                                })
-
-                # Extract results from final state
-                results = final_state.get("results")
-                error = final_state.get("error")
+                                    "icon": "check",
+                                }))
+                                # Resume graph - pass None to continue from interrupt
+                                async for chunk in agent_graph.astream(None, config=config):
+                                    for node_name in chunk.keys():
+                                        if node_name in ["ThreatIntel", "Hunter", "RedTeam", "Detection"]:
+                                            await websocket.send_json(_add_timestamp({"type": "activity", "title": f"{node_name} Agent", "detail": "Executing...", "status": "running"}))
+                                break
+                            elif data.get("type") == "deny":
+                                await websocket.send_json(_add_timestamp({
+                                    "type": "activity",
+                                    "title": "Denied",
+                                    "detail": "Action cancelled by user.",
+                                    "status": "error",
+                                    "icon": "x",
+                                }))
+                                return # Stop execution
                 
-                if error:
+                # Final Result
+                snapshot = agent_graph.get_state(config)
+                if snapshot.values and "messages" in snapshot.values:
+                    final_msg = snapshot.values["messages"][-1]
                     await websocket.send_json({
-                        "type": "error",
-                        "title": "Tool execution failed",
-                        "detail": error,
+                        "type": "final",
+                        "source": "agent",
+                        "summary": final_msg.content,
+                        "results": [] # Raw results are harder to extract from ReAct, using summary
                     })
-                    continue
-
-                # Mark tool execution as complete
-                await websocket.send_json({
-                    "type": "activity",
-                    "title": "Executing tool",
-                    "detail": f"Completed {tool_choice}",
-                    "status": "done",
-                    "icon": "bolt",
-                })
-
-                # Summarize results
-                await websocket.send_json({
-                    "type": "activity",
-                    "title": "Summarizing results",
-                    "detail": "Generating human-readable answer...",
-                    "status": "running",
-                    "icon": "robot",
-                })
-
-                summary_text = ""
-                query_str = ""
-                if tool_choice == "execute_splunk_search":
-                    query_str = final_state.get("spl_query")
-                elif tool_choice == "run_velociraptor_query":
-                    query_str = final_state.get("vql_query")
-                elif tool_choice == "web_search":
-                    query_str = final_state.get("web_query")
-                elif tool_choice == "visit_page":
-                    query_str = final_state.get("web_url")
-
-                summary_text = await _summarize_results(
-                    question=question,
-                    query=query_str,
-                    rows=results,
-                    tool_name=tool_choice,
-                    model=req_summary_model
-                )
-
-                await websocket.send_json({
-                    "type": "activity",
-                    "title": "Summarizing results",
-                    "detail": summary_text[:100] + "...",
-                    "status": "done",
-                    "icon": "robot",
-                })
-
-                # Send final response
-                await websocket.send_json({
-                    "type": "final",
-                    "source": tool_choice,
-                    "spl": final_state.get("spl_query"),
-                    "vql": final_state.get("vql_query"),
-                    "web_query": final_state.get("web_query"),
-                    "web_url": final_state.get("web_url"),
-                    "count": len(results) if isinstance(results, list) else None,  # Don't show count for web tools
-                    "results": results,
-                    "summary": summary_text,
-                })
 
             except Exception as e:
-                await websocket.send_json({
+                await websocket.send_json(_add_timestamp({
                     "type": "error",
                     "title": "Agent execution error",
                     "detail": str(e),
-                })
+                }))
                 import traceback
                 traceback.print_exc()
             continue
+
 
     except WebSocketDisconnect:
         return

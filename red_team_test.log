@@ -1,0 +1,23 @@
+USER_AGENT environment variable not set, consider setting it to identify your requests.
+Building RedTeam Agent...
+Invoking RedTeam Agent with 'Simulate T1003'...
+DEBUG: Extracted Action: execute_test
+
+[EVENT] on_tool_start: atomic_red_team
+  Input: None
+
+[EVENT] on_tool_end: atomic_red_team
+  Output: Execution Result for T1003 (Test 1):
+Return Code: 0
+Stdout:
+PathToAtomicsFolder = C:\AtomicRedTeam\atomics
+
+Executing test: T1003-1 Gsecdump
+The system cannot find the path specified.
+Exit code: 1
+Done executing test: T1003-1 Gsecdump
+
+
+
+[EVENT] on_chain_end: LangGraph
+  Output: {'tools': {'messages': [AIMessage(content='Tool Execution Result: Execution Result for T1003 (Test 1):\nReturn Code: 0\nStdout:\nPathToAtomicsFolder = C:\\AtomicRedTeam\\atomics\n\nExecuting test: T1003-1 Gsecdump\nThe system cannot find the path specified.\nExit code: 1\nDone executing test: T1003-1 Gsecdump\n\n', additional_kwargs={}, response_metadata={})]}}

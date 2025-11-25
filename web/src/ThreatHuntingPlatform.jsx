@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Activity, Plug, Settings, Menu, Shield, Search, AlertCircle, CheckCircle2, Clock, Copy, Plus, TrendingUp, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { MessageSquare, Activity, Plug, Settings, Menu, Shield, Search, AlertCircle, CheckCircle2, Clock, Copy, Plus, TrendingUp, ArrowUpRight, ArrowDownRight, Send, Square, Check, X } from 'lucide-react';
 
-export default function ThreatHuntingPlatform({ messages, activities, searchResults, isConnected, settings, onUpdateSettings, onSendMessage, onNewHunt }) {
+export default function ThreatHuntingPlatform({ messages, activities, searchResults, isConnected, isHunting, settings, onUpdateSettings, onSendMessage, onStopHunt, onApprove, onNewHunt }) {
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeView, setActiveView] = useState('chat');
@@ -33,6 +33,10 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
 
   const handleSendMessage = (e) => {
     e.preventDefault();
+    if (isHunting && onStopHunt) {
+      onStopHunt();
+      return;
+    }
     if (inputMessage.trim() && onSendMessage) {
       onSendMessage(inputMessage);
       setInputMessage('');
@@ -42,6 +46,24 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
   };
+
+  const formatRelativeTime = (timestamp) => {
+    if (!timestamp) return '';
+    const now = new Date();
+    const then = new Date(timestamp);
+    const diffMs = now - then;
+    const diffSecs = Math.floor(diffMs / 1000);
+
+    if (diffSecs < 1) return 'just now';
+    if (diffSecs < 60) return `${diffSecs}s ago`;
+    const diffMins = Math.floor(diffSecs / 60);
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  };
+
 
   const checkHealth = async (which) => {
     try {
@@ -450,28 +472,64 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                         I'm initiating a comprehensive threat hunt across all platforms. Check the agent activity monitor below for real-time progress.
                       </p>
                       <div className="bg-black rounded-xl p-4 border border-neutral-800 space-y-3">
-                        {activities.slice(-5).map((activity) => (
-                          <div key={activity.id || activity.message} className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              {activity.type === 'info' ? (
-                                <div className="animate-spin">
-                                  <Clock className="w-4 h-4 text-blue-500" />
-                                </div>
-                              ) : activity.type === 'success' ? (
-                                <CheckCircle2 className="w-4 h-4 text-brand" />
-                              ) : (
-                                <AlertCircle className="w-4 h-4 text-red-500" />
-                              )}
-                              <span className="text-xs text-neutral-300 font-medium">{activity.message}</span>
+                        {activities.map((activity) => (
+                          <div key={activity.id || activity.message} className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                {activity.type === 'info' ? (
+                                  <div className="animate-spin">
+                                    <Clock className="w-4 h-4 text-blue-500" />
+                                  </div>
+                                ) : activity.type === 'success' ? (
+                                  <CheckCircle2 className="w-4 h-4 text-brand" />
+                                ) : activity.type === 'approval_required' ? (
+                                  <AlertCircle className="w-4 h-4 text-yellow-500" />
+                                ) : (
+                                  <AlertCircle className="w-4 h-4 text-red-500" />
+                                )}
+                                <span className="text-xs text-neutral-300 font-medium">{activity.message}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {activity.timestamp && (
+                                  <span className="text-[10px] text-neutral-500" title={new Date(activity.timestamp).toLocaleString()}>
+                                    {formatRelativeTime(activity.timestamp)}
+                                  </span>
+                                )}
+                                <span className={`text-xs font-medium ${activity.type === 'info' ? 'text-blue-500' :
+                                  activity.type === 'success' ? 'text-brand' :
+                                    activity.type === 'approval_required' ? 'text-yellow-500' :
+                                      'text-red-500'
+                                  }`}>
+                                  {activity.type === 'info' ? 'In Progress' :
+                                    activity.type === 'success' ? 'Complete' :
+                                      activity.type === 'approval_required' ? 'Approval Required' :
+                                        'Error'}
+                                </span>
+                              </div>
                             </div>
-                            <span className={`text-xs font-medium ${activity.type === 'info' ? 'text-blue-500' :
-                              activity.type === 'success' ? 'text-brand' :
-                                'text-red-500'
-                              }`}>
-                              {activity.type === 'info' ? 'In Progress' :
-                                activity.type === 'success' ? 'Complete' :
-                                  'Error'}
-                            </span>
+                            {activity.details && (
+                              <div className="ml-7 text-[11px] text-neutral-500 font-mono break-all">
+                                {activity.details}
+                              </div>
+                            )}
+                            {activity.type === 'approval_required' && (
+                              <div className="ml-7 mt-2 flex gap-2">
+                                <button
+                                  onClick={() => onApprove(true, activity.thread_id)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-brand text-black text-xs font-semibold rounded-lg hover:bg-brand-600 transition-colors"
+                                >
+                                  <Check className="w-3 h-3" />
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => onApprove(false, activity.thread_id)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 text-white text-xs font-semibold rounded-lg hover:bg-neutral-700 transition-colors"
+                                >
+                                  <X className="w-3 h-3" />
+                                  Deny
+                                </button>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -504,15 +562,25 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
                   placeholder="Ask the AI agent to investigate threats..."
-                  disabled={!isConnected}
+                  disabled={!isConnected || isHunting}
                   className="flex-1 bg-neutral-950 border border-neutral-800 rounded-xl px-4 lg:px-5 py-2.5 lg:py-3 text-xs lg:text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <button
                   type="submit"
-                  disabled={!isConnected || !inputMessage.trim()}
-                  className="bg-brand hover:bg-brand-600 text-black px-4 lg:px-6 py-2.5 lg:py-3 rounded-xl flex items-center gap-2 font-medium transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand"
+                  disabled={!isConnected || (!inputMessage.trim() && !isHunting)}
+                  className={`${isHunting ? 'bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/50' : 'bg-brand hover:bg-brand-600'} text-black px-4 lg:px-6 py-2.5 lg:py-3 rounded-xl flex items-center justify-center gap-2 font-medium transition-all flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand disabled:shadow-none min-w-[90px] lg:min-w-[110px]`}
                 >
-                  <span className="text-xs lg:text-sm">Send</span>
+                  {isHunting ? (
+                    <>
+                      <Square className="w-3 h-3 fill-current" />
+                      <span className="text-xs lg:text-sm font-semibold">Stop</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3 h-3" />
+                      <span className="text-xs lg:text-sm">Send</span>
+                    </>
+                  )}
                 </button>
               </form>
             </div>
@@ -667,23 +735,48 @@ export default function ThreatHuntingPlatform({ messages, activities, searchResu
                 </div>
               ) : (
                 activities.map((activity, idx) => (
-                  <div key={idx} className="bg-neutral-950 rounded-xl border border-neutral-800 p-4 lg:p-5">
+                  <div key={idx} className={`bg-neutral-950 rounded-xl border p-4 lg:p-5 ${activity.type === 'approval_required' ? 'border-yellow-500/50 bg-yellow-500/5' : 'border-neutral-800'
+                    }`}>
                     <div className="flex items-start gap-3">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${activity.type === 'error'
                         ? 'bg-red-500/10 text-red-500'
                         : activity.type === 'success'
                           ? 'bg-brand/10 text-brand'
-                          : 'bg-blue-500/10 text-blue-500'
+                          : activity.type === 'approval_required'
+                            ? 'bg-yellow-500/10 text-yellow-500'
+                            : 'bg-blue-500/10 text-blue-500'
                         }`}>
                         {activity.type === 'error' && <AlertCircle className="w-4 h-4" />}
                         {activity.type === 'success' && <CheckCircle2 className="w-4 h-4" />}
                         {activity.type === 'info' && <Clock className="w-4 h-4" />}
+                        {activity.type === 'approval_required' && <AlertCircle className="w-4 h-4" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-neutral-200 mb-1">{activity.message}</p>
                         {activity.details && (
                           <p className="text-xs text-neutral-500">{activity.details}</p>
                         )}
+
+                        {/* Approval Buttons */}
+                        {activity.type === 'approval_required' && (
+                          <div className="mt-3 flex gap-3">
+                            <button
+                              onClick={() => onApprove(true, activity.thread_id)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-brand text-black text-xs font-semibold rounded-lg hover:bg-brand-600 transition-colors"
+                            >
+                              <Check className="w-3 h-3" />
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => onApprove(false, activity.thread_id)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 text-white text-xs font-semibold rounded-lg hover:bg-neutral-700 transition-colors"
+                            >
+                              <X className="w-3 h-3" />
+                              Deny
+                            </button>
+                          </div>
+                        )}
+
                         {activity.timestamp && (
                           <p className="text-xs text-neutral-600 mt-2">
                             {new Date(activity.timestamp).toLocaleTimeString()}

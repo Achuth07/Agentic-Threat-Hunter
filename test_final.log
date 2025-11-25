@@ -1,0 +1,13 @@
+Connecting to ws://localhost:8005/ws...
+✓ Connected
+
+Sending query: 'Simulate T1003 using Atomic Red Team'
+  [running] Analyzing question: Simulate T1003 using Atomic Red Team
+  [done] Tool selected: execute_splunk_search
+  [running] Agent System Started: Supervisor is planning...
+  [running] Supervisor: Planning next step...
+  [done] Delegating Task: Supervisor -> RedTeam
+
+❌ ERROR: Agent execution error - No checkpointer set
+
+❌ HITL Test Failed: No approval request received.

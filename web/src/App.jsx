@@ -7,6 +7,8 @@ function App() {
   const [activities, setActivities] = useState([])
   const [searchResults, setSearchResults] = useState(null)
   const [isConnected, setIsConnected] = useState(false)
+  const [isHunting, setIsHunting] = useState(false)
+  const [connectionId, setConnectionId] = useState(0)
   const [settings, setSettings] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('ath_settings') || '{}')
@@ -29,6 +31,7 @@ function App() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsUrl = `${protocol}//${window.location.hostname}:8005/ws`
 
+    console.log(`Connecting to WebSocket (ID: ${connectionId})...`)
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 
@@ -152,6 +155,7 @@ function App() {
             return updated
           })
         } else if (data.type === 'final') {
+          setIsHunting(false)
           // Final results with SPL/VQL, count, results, summary, and source
           // Ensure summary is a string to prevent React render crashes
           const safeSummary = typeof data.summary === 'string' ? data.summary : JSON.stringify(data.summary || '');
@@ -177,7 +181,20 @@ function App() {
           })
           // Add assistant message with summary
           setMessages(prev => [...prev, { role: 'assistant', content: safeSummary }])
+        } else if (data.type === 'approval_required') {
+          // HITL Approval Request
+          setActivities(prev => [...prev, {
+            type: 'approval_required',
+            message: data.title,
+            details: data.detail,
+            thread_id: data.thread_id,
+            next_node: data.next_node,
+            timestamp: new Date().toISOString()
+          }])
+          // Also add a system message
+          setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ **Approval Required**: ${data.detail}` }])
         } else if (data.type === 'error') {
+          setIsHunting(false)
           // Error from backend
           const errorMsg = `${data.title}: ${data.detail}`
           setMessages(prev => [...prev, { role: 'error', content: errorMsg }])
@@ -214,13 +231,14 @@ function App() {
         ws.close()
       }
     }
-  }, [])
+  }, [connectionId])
 
   const sendMessage = (message) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       // Clear previous run's activity and summary before sending a new question
       setActivities([])
       setSearchResults(null)
+      setIsHunting(true)
       const payload = {
         type: 'ask',
         question: message,
@@ -238,11 +256,53 @@ function App() {
     }
   }
 
+  const stopHunt = () => {
+    if (isHunting) {
+      setIsHunting(false)
+      setActivities(prev => [...prev, {
+        type: 'error',
+        message: 'Stopped',
+        details: 'Hunt terminated by user',
+        status: 'error',
+        timestamp: new Date().toISOString()
+      }])
+      setMessages(prev => [...prev, { role: 'error', content: 'Hunt terminated by user.' }])
+
+      // Force reconnection to kill the server process
+      setConnectionId(prev => prev + 1)
+    }
+  }
+
+  const handleApproval = (approved, thread_id) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const payload = {
+        type: approved ? 'approve' : 'deny',
+        thread_id: thread_id
+      }
+      wsRef.current.send(JSON.stringify(payload))
+
+      // Update the activity to show decision
+      setActivities(prev => prev.map(a => {
+        if (a.type === 'approval_required') {
+          return {
+            ...a,
+            type: approved ? 'success' : 'error',
+            message: approved ? 'Approved' : 'Denied',
+            details: approved ? 'Action approved by user' : 'Action denied by user',
+            status: 'done'
+          }
+        }
+        return a
+      }))
+    }
+  }
+
   const handleNewHunt = () => {
     // Clear all UI state for a fresh hunt
     setMessages([])
     setActivities([])
     setSearchResults(null)
+    setIsHunting(false)
   }
 
   const updateSettings = (next) => {
@@ -259,9 +319,12 @@ function App() {
       activities={activities}
       searchResults={searchResults}
       isConnected={isConnected}
+      isHunting={isHunting}
       settings={settings}
       onUpdateSettings={updateSettings}
       onSendMessage={sendMessage}
+      onStopHunt={stopHunt}
+      onApprove={handleApproval}
       onNewHunt={handleNewHunt}
     />
   )

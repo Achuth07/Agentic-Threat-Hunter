@@ -1,0 +1,350 @@
+USER_AGENT environment variable not set, consider setting it to identify your requests.
+INFO:     Will watch for changes in these directories: ['/home/achuth/agentic-hunter']
+INFO:     Uvicorn running on http://0.0.0.0:8005 (Press CTRL+C to quit)
+INFO:     Started reloader process [70760] using WatchFiles
+USER_AGENT environment variable not set, consider setting it to identify your requests.
+INFO:     Started server process [70783]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:56391 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56391 - "GET /assets/index-ec765a80.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56391 - "GET /assets/index-693f573b.css HTTP/1.1" 200 OK
+INFO:     ('127.0.0.1', 54404) - "WebSocket /ws" [accepted]
+INFO:     connection open
+WebSocket connection accepted
+INFO:     127.0.0.1:56391 - "GET /health/splunk HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56391 - "GET /health/velociraptor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56391 - "GET /health/virustotal HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56391 - "GET /health/atomicredteam HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56391 - "GET /health/sigma HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56391 - "GET / HTTP/1.1" 200 OK
+Traceback (most recent call last):
+  File "/home/achuth/agentic-hunter/server.py", line 703, in ws_chat
+    incoming = await websocket.receive_text()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 119, in receive_text
+    self._raise_on_disconnect(message)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 113, in _raise_on_disconnect
+    raise WebSocketDisconnect(message["code"], message.get("reason"))
+starlette.websockets.WebSocketDisconnect: (1001, '')
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/achuth/agentic-hunter/server.py", line 703, in ws_chat
+    incoming = await websocket.receive_text()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 119, in receive_text
+    self._raise_on_disconnect(message)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 113, in _raise_on_disconnect
+    raise WebSocketDisconnect(message["code"], message.get("reason"))
+starlette.websockets.WebSocketDisconnect: (1001, '')
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/uvicorn/protocols/websockets/websockets_impl.py", line 242, in run_asgi
+    result = await self.app(self.scope, self.asgi_receive, self.asgi_send)  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/fastapi/applications.py", line 1054, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/applications.py", line 113, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/middleware/errors.py", line 152, in __call__
+    await self.app(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/routing.py", line 715, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/routing.py", line 735, in app
+    await route.handle(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/routing.py", line 362, in handle
+    await self.app(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/routing.py", line 95, in app
+    await wrap_app_handling_exceptions(app, session)(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/routing.py", line 93, in app
+    await func(session)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/fastapi/routing.py", line 383, in app
+    await dependant.call(**solved_result.values)
+  File "/home/achuth/agentic-hunter/server.py", line 761, in ws_chat
+    await websocket.send_json(_add_timestamp({
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 175, in send_json
+    await self.send({"type": "websocket.send", "text": text})
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 85, in send
+    await self._send(message)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 39, in sender
+    await send(message)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/uvicorn/protocols/websockets/websockets_impl.py", line 358, in asgi_send
+    raise RuntimeError(msg % message_type)
+RuntimeError: Unexpected ASGI message 'websocket.send', after sending 'websocket.close' or response already completed.
+INFO:     connection closed
+INFO:     ('127.0.0.1', 63862) - "WebSocket /ws" [accepted]
+INFO:     connection open
+Error in WebSocket loop: (1001, '')
+WebSocket connection accepted
+INFO:     127.0.0.1:56391 - "GET /health/splunk HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56391 - "GET /health/velociraptor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56391 - "GET /health/virustotal HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56391 - "GET /health/atomicredteam HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56391 - "GET /health/sigma HTTP/1.1" 200 OK
+Received message: {"type":"ask","question":"Simulate T1003 using Atomic Red Team","settings":{"defaultIndex":"main","t...
+Processing question: Simulate T1003 using Atomic Red Team
+Routing tool...
+Tool selected: execute_splunk_search
+DEBUG: intel_agent type: <class 'langgraph.graph.state.CompiledStateGraph'>
+DEBUG: intel_node type: <class 'function'>
+DEBUG: Supervisor Raw Output: {
+  "thought": "The user has requested to simulate an attack using T1003 via Atomic Red Team.",
+  "next_agent": "RedTeam",
+  "instructions_for_agent": "Execute the T1003 simulation as per the Atomic Red Team guidelines. Ensure you are running in a controlled environment and that all necessary permissions are obtained."
+}
+DEBUG: Supervisor Raw Output: {
+  "thought": "The user has requested a simulation of T1003 using Atomic Red Team. I will route this to the RedTeam agent with the necessary instructions.",
+  "next_agent": "RedTeam",
+  "instructions_for_agent": "Execute the T1003 test using Atomic Red Team."
+}
+INFO:     127.0.0.1:62898 - "GET / HTTP/1.1" 200 OK
+Traceback (most recent call last):
+  File "/home/achuth/agentic-hunter/server.py", line 703, in ws_chat
+    incoming = await websocket.receive_text()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 119, in receive_text
+    self._raise_on_disconnect(message)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 113, in _raise_on_disconnect
+    raise WebSocketDisconnect(message["code"], message.get("reason"))
+starlette.websockets.WebSocketDisconnect: (1001, '')
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/achuth/agentic-hunter/server.py", line 703, in ws_chat
+    incoming = await websocket.receive_text()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 119, in receive_text
+    self._raise_on_disconnect(message)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 113, in _raise_on_disconnect
+    raise WebSocketDisconnect(message["code"], message.get("reason"))
+starlette.websockets.WebSocketDisconnect: (1001, '')
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/uvicorn/protocols/websockets/websockets_impl.py", line 242, in run_asgi
+    result = await self.app(self.scope, self.asgi_receive, self.asgi_send)  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/fastapi/applications.py", line 1054, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/applications.py", line 113, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/middleware/errors.py", line 152, in __call__
+    await self.app(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/routing.py", line 715, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/routing.py", line 735, in app
+    await route.handle(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/routing.py", line 362, in handle
+    await self.app(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/routing.py", line 95, in app
+    await wrap_app_handling_exceptions(app, session)(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/routing.py", line 93, in app
+    await func(session)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/fastapi/routing.py", line 383, in app
+    await dependant.call(**solved_result.values)
+  File "/home/achuth/agentic-hunter/server.py", line 761, in ws_chat
+    await websocket.send_json(_add_timestamp({
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 175, in send_json
+    await self.send({"type": "websocket.send", "text": text})
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 85, in send
+    await self._send(message)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 39, in sender
+    await send(message)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/uvicorn/protocols/websockets/websockets_impl.py", line 358, in asgi_send
+    raise RuntimeError(msg % message_type)
+RuntimeError: Unexpected ASGI message 'websocket.send', after sending 'websocket.close' or response already completed.
+INFO:     connection closed
+Error in WebSocket loop: (1001, '')
+INFO:     127.0.0.1:62898 - "GET /assets/index-a315d3a7.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62898 - "GET /assets/index-f963a0ca.css HTTP/1.1" 200 OK
+INFO:     ('127.0.0.1', 55826) - "WebSocket /ws" [accepted]
+INFO:     connection open
+WebSocket connection accepted
+INFO:     127.0.0.1:62898 - "GET /health/splunk HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62898 - "GET /health/velociraptor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62898 - "GET /health/virustotal HTTP/1.1" 200 OK
+Received message: {"type":"ask","question":"Simulate T1003 using Atomic Red Team","settings":{"defaultIndex":"main","t...
+Processing question: Simulate T1003 using Atomic Red Team
+Routing tool...
+INFO:     127.0.0.1:62898 - "GET /health/atomicredteam HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62898 - "GET /health/sigma HTTP/1.1" 200 OK
+WARNING:  WatchFiles detected changes in 'test_red_team_agent.py'. Reloading...
+INFO:     Shutting down
+Traceback (most recent call last):
+  File "/home/achuth/agentic-hunter/server.py", line 703, in ws_chat
+    incoming = await websocket.receive_text()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 119, in receive_text
+    self._raise_on_disconnect(message)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 113, in _raise_on_disconnect
+    raise WebSocketDisconnect(message["code"], message.get("reason"))
+starlette.websockets.WebSocketDisconnect: (1012, None)
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/achuth/agentic-hunter/server.py", line 703, in ws_chat
+    incoming = await websocket.receive_text()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 119, in receive_text
+    self._raise_on_disconnect(message)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 113, in _raise_on_disconnect
+    raise WebSocketDisconnect(message["code"], message.get("reason"))
+starlette.websockets.WebSocketDisconnect: (1012, None)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/uvicorn/protocols/websockets/websockets_impl.py", line 242, in run_asgi
+    result = await self.app(self.scope, self.asgi_receive, self.asgi_send)  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/fastapi/applications.py", line 1054, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/applications.py", line 113, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/middleware/errors.py", line 152, in __call__
+    await self.app(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/routing.py", line 715, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/routing.py", line 735, in app
+    await route.handle(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/routing.py", line 362, in handle
+    await self.app(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/routing.py", line 95, in app
+    await wrap_app_handling_exceptions(app, session)(scope, receive, send)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/routing.py", line 93, in app
+    await func(session)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/fastapi/routing.py", line 383, in app
+    await dependant.call(**solved_result.values)
+  File "/home/achuth/agentic-hunter/server.py", line 761, in ws_chat
+    await websocket.send_json(_add_timestamp({
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 175, in send_json
+    await self.send({"type": "websocket.send", "text": text})
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/websockets.py", line 85, in send
+    await self._send(message)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/starlette/_exception_handler.py", line 39, in sender
+    await send(message)
+  File "/home/achuth/agentic-hunter/hunter_env/lib/python3.12/site-packages/uvicorn/protocols/websockets/websockets_impl.py", line 358, in asgi_send
+    raise RuntimeError(msg % message_type)
+RuntimeError: Unexpected ASGI message 'websocket.send', after sending 'websocket.close' or response already completed.
+INFO:     connection closed
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [70783]
+USER_AGENT environment variable not set, consider setting it to identify your requests.
+INFO:     Started server process [115754]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'agent/hierarchical_agent.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [115754]
+USER_AGENT environment variable not set, consider setting it to identify your requests.
+INFO:     Started server process [116448]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'agent/hierarchical_agent.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [116448]
+USER_AGENT environment variable not set, consider setting it to identify your requests.
+INFO:     Started server process [117270]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'agent/hierarchical_agent.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [117270]
+USER_AGENT environment variable not set, consider setting it to identify your requests.
+INFO:     Started server process [117809]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'agent/hierarchical_agent.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [117809]
+USER_AGENT environment variable not set, consider setting it to identify your requests.
+INFO:     Started server process [118376]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'agent/hierarchical_agent.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [118376]
+USER_AGENT environment variable not set, consider setting it to identify your requests.
+INFO:     Started server process [118943]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'agent/hierarchical_agent.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [118943]
+USER_AGENT environment variable not set, consider setting it to identify your requests.
+INFO:     Started server process [119503]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'agent/hierarchical_agent.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [119503]
+USER_AGENT environment variable not set, consider setting it to identify your requests.
+INFO:     Started server process [121606]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:52679 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52679 - "GET /assets/index-a315d3a7.js HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52679 - "GET /assets/index-f963a0ca.css HTTP/1.1" 304 Not Modified
+INFO:     ('127.0.0.1', 62435) - "WebSocket /ws" [accepted]
+INFO:     connection open
+WebSocket connection accepted
+INFO:     127.0.0.1:52679 - "GET /health/splunk HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52679 - "GET /health/velociraptor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52679 - "GET /health/virustotal HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52679 - "GET /health/atomicredteam HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52679 - "GET /health/sigma HTTP/1.1" 200 OK
