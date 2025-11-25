@@ -1075,7 +1075,12 @@ async def ws_chat(websocket: WebSocket):
                                         "status": "done",
                                     }))
                         elif node_name in ["ThreatIntel", "Hunter", "RedTeam", "Detection"]:
-                            await websocket.send_json(_add_timestamp({"type": "activity", "title": f"{node_name} Agent", "detail": "Working...", "status": "running"}))
+                            await websocket.send_json(_add_timestamp({
+                                "type": "activity", 
+                                "title": f"{node_name} Agent", 
+                                "detail": "Task Completed", 
+                                "status": "success"
+                            }))
                 
                 # Check final state
                 snapshot = agent_graph.get_state(config)
@@ -1110,7 +1115,12 @@ async def ws_chat(websocket: WebSocket):
                                 async for chunk in agent_graph.astream(None, config=config):
                                     for node_name in chunk.keys():
                                         if node_name in ["ThreatIntel", "Hunter", "RedTeam", "Detection"]:
-                                            await websocket.send_json(_add_timestamp({"type": "activity", "title": f"{node_name} Agent", "detail": "Executing...", "status": "running"}))
+                                            await websocket.send_json(_add_timestamp({
+                                                "type": "activity", 
+                                                "title": f"{node_name} Agent", 
+                                                "detail": "Task Completed", 
+                                                "status": "success"
+                                            }))
                                 break
                             elif data.get("type") == "deny":
                                 await websocket.send_json(_add_timestamp({
