@@ -1,0 +1,3 @@
+DEBUG: Entering tool_node. Last message type: <class 'langchain_core.messages.ai.AIMessage'>, Content: {"name": "atomic_red_team", "arguments": {"query": "execute_test", "technique_id": "T1003"}}
+DEBUG: Entering tool_node. Last message type: <class 'langchain_core.messages.ai.AIMessage'>, Content: {"name": "atomic_red_team", "arguments": {"query": "execute_test", "technique_id": "T1003"}}
+DEBUG: Entering tool_node. Last message type: <class 'langchain_core.messages.ai.AIMessage'>, Content: {"name": "atomic_red_team", "arguments": {"query":"execute_test","technique_id":"T1003"}}

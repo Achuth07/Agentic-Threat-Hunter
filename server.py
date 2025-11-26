@@ -784,7 +784,7 @@ async def ws_chat(websocket: WebSocket):
                 splunk_execute_fn=_sync_splunk_wrapper,
                 velociraptor_fn=_sync_velo_wrapper,
                 supervisor_model=req_coder_model, # Supervisor needs a smart model
-                worker_model=req_summary_model,   # Workers can use the faster model
+                worker_model=req_coder_model,     # Workers need tool support
             )
 
             # Initial state
@@ -814,17 +814,27 @@ async def ws_chat(websocket: WebSocket):
 
             # Start execution
             try:
-                # Mark system start as done
+                # Mark system start as running
                 await websocket.send_json(_add_timestamp({
                     "type": "activity",
                     "title": "Agent System Started",
                     "detail": "System initialized",
-                    "status": "done",
+                    "status": "running",
                     "icon": "brain",
                 }))
 
+                system_started_done = False
                 # Use astream which properly handles interrupts
                 async for chunk in agent_graph.astream(initial_state, config=config):
+                    if not system_started_done:
+                        await websocket.send_json(_add_timestamp({
+                            "type": "activity",
+                            "title": "Agent System Started",
+                            "detail": "System initialized",
+                            "status": "done",
+                            "icon": "brain",
+                        }))
+                        system_started_done = True
                     # chunk is a dict with node names as keys
                     for node_name, node_output in chunk.items():
                         if node_name == "Supervisor":
@@ -919,22 +929,29 @@ async def ws_chat(websocket: WebSocket):
                     
                     results = []
                     # Extract raw results from previous tool messages
+                    results = []
+                    # Extract raw results from previous tool messages
                     for msg in reversed(messages[:-1]):
-                        if isinstance(msg, (ToolMessage, HumanMessage)):
+                        if isinstance(msg, ToolMessage):
                             content = str(msg.content)
-                            # Clean up "Tool Execution Result: " prefix if present
-                            if content.startswith("Tool Execution Result: "):
-                                content = content.replace("Tool Execution Result: ", "", 1)
-                            
                             try:
-                                # Try to parse JSON if possible
                                 parsed = json.loads(content)
                                 results.append(parsed)
                             except:
                                 results.append(content)
+                        elif isinstance(msg, HumanMessage):
+                            content = str(msg.content)
+                            if content.startswith("Tool Execution Result: "):
+                                content = content.replace("Tool Execution Result: ", "", 1)
+                                try:
+                                    parsed = json.loads(content)
+                                    results.append(parsed)
+                                except:
+                                    results.append(content)
                         
                         # Stop if we hit the previous AI message (start of this turn)
                         if isinstance(msg, AIMessage):
+                            print("DEBUG: Hit AIMessage, breaking loop")
                             break
                     
                     results.reverse()
